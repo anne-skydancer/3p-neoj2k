@@ -162,5 +162,14 @@ jobs:
         run: |
           set -euo pipefail
           cd packages
+          # the tag names the version the packages were built as (VERSION.txt, in each archive's name): v<version>
+          version="${TAG#v}"
+          [[ "$TAG" == v* ]] || { echo "::error::the tag must be v<version>"; exit 1; }
+          for archive in *.tar.zst; do
+            case "$archive" in
+              neoj2k-"${version}"-*) ;;
+              *) echo "::error::$archive was not built as version $version: pin the submodule to neo-j2k's tag $TAG first"; exit 1 ;;
+            esac
+          done
           sha256sum *.tar.zst | tee SHA256SUMS
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes --title "$TAG" *.tar.zst SHA256SUMS

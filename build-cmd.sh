@@ -98,15 +98,12 @@ mkdir -p "$stage/LICENSES"
 # ports from it. openjpeg.txt is the second part alone, under the name OpenJPEG's own package uses.
 {
     cat "$SOURCE_DIR/LICENSE"
-    printf '
-
-----------------------------------------------------------------------------
-'
-    printf 'OpenJPEG (code ported into neo-j2k): licence and notices
-'
-    printf -- '----------------------------------------------------------------------------
-
-'
+    echo
+    echo
+    echo "----------------------------------------------------------------------------"
+    echo "OpenJPEG (code ported into neo-j2k): licence and notices"
+    echo "----------------------------------------------------------------------------"
+    echo
     cat "$SOURCE_DIR/LICENSE.OpenJPEG"
 } > "$stage/LICENSES/neoj2k.txt"
 cp "$SOURCE_DIR/LICENSE.OpenJPEG" "$stage/LICENSES/openjpeg.txt"

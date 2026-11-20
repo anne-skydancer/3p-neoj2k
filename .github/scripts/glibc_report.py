@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026, Anne Skydancer (neo-j2k)
 """Report (and optionally enforce) the newest GLIBC_ version Linux libraries need.
 
 Shared objects: versions in `objdump -T` output.

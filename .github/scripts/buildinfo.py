@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026, Anne Skydancer (neo-j2k)
 """Write LICENSES/<name>-buildinfo.json into the stage directory before packaging.
 
 usage: buildinfo.py --stage stage --name NAME --flavour windows64|linux64|linux64-lts
