@@ -1,0 +1,6 @@
+stage/
+autobuild-parabuild-bootstrap/
+*.tar.zst
+autobuild-results*.json
+__pycache__/
+build/

@@ -1,0 +1,166 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026, Anne Skydancer (neo-j2k)
+#
+# Builds the neoj2k package (the shared library, headers and licence texts) for windows64, linux64 and
+# linux64-lts, from the neo-j2k commit the submodule pins. A dispatch with `publish` and a `tag` also cuts a
+# GitHub release from the three packages; nothing else publishes.
+name: Build
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Cut a GitHub release from the three packages (the tag below must not exist yet)."
+        type: boolean
+        default: false
+      tag:
+        description: "The release tag, e.g. v0.1.0-1 (required with publish)."
+        type: string
+        default: ""
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+env:
+  AUTOBUILD_ADDRSIZE: '64'
+  AUTOBUILD_BUILD_ID: ${{ github.run_id }}
+  AUTOBUILD_VARIABLES_FILE: ${{ github.workspace }}/.build-variables/variables
+  MSYS2_ARG_CONV_EXCL: '*'
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            flavour: windows64
+            name: neoj2k-Windows-64
+          - os: ubuntu-26.04
+            flavour: linux64
+            name: neoj2k-Linux-64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      AUTOBUILD: autobuild
+      AUTOBUILD_VSVER: '180'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/checkout@v7
+        with:
+          repository: secondlife/build-variables
+          path: .build-variables
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Dependencies
+        run: |
+          python -m pip install autobuild==3.9.3
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ninja-build
+          fi
+      - name: Build
+        run: autobuild build -A 64 -c Release --no-configure --id "$GITHUB_RUN_ID"
+      - name: Verify the package and the library through a round trip
+        run: python verify_package.py stage neo-j2k
+      - name: Report glibc requirement (Linux, report only)
+        if: runner.os == 'Linux'
+        run: python .github/scripts/glibc_report.py --json glibc.json stage
+      - name: Write build-info file
+        run: |
+          python .github/scripts/buildinfo.py --name neoj2k --flavour "${{ matrix.flavour }}" \
+            --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
+            --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
+            --build-type "Release, shared library only, AVX2 floor, LTO inside the library" \
+            --glibc-json glibc.json \
+            --option NJ2K_BUILD_STATIC=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+      - name: Package
+        run: |
+          version="$(cat stage/VERSION.txt)"
+          autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-${{ matrix.flavour }}-${GITHUB_RUN_ID}" --results-file autobuild-results.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            *.tar.zst
+            autobuild-results.json
+            stage/SOURCE_REVISION.txt
+  build-lts:
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      AUTOBUILD: autobuild
+      FLAVOUR: linux64-lts
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git build-essential cmake ninja-build binutils python3 python3-venv gcc-14 g++-14
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 --slave /usr/bin/g++ g++ /usr/bin/g++-14
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/checkout@v7
+        with:
+          repository: secondlife/build-variables
+          path: .build-variables
+      - name: Install packaging tools
+        run: |
+          python3 -m venv /opt/ab
+          /opt/ab/bin/pip install autobuild==3.9.3
+          echo /opt/ab/bin >> "$GITHUB_PATH"
+      - name: Build
+        run: autobuild build -A 64 -c Release --no-configure --id "$GITHUB_RUN_ID"
+      - name: Verify the package and the library through a round trip
+        run: /opt/ab/bin/python verify_package.py stage neo-j2k
+      - name: Check glibc requirement (fails above 2.39)
+        run: python3 .github/scripts/glibc_report.py --max 2.39 --json glibc.json stage
+      - name: Write build-info file
+        run: |
+          python3 .github/scripts/buildinfo.py --name neoj2k --flavour "$FLAVOUR" \
+            --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
+            --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
+            --build-type "Release, shared library only, AVX2 floor, ubuntu:24.04" \
+            --glibc-json glibc.json \
+            --option NJ2K_BUILD_STATIC=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+      - name: Package
+        run: |
+          version="$(cat stage/VERSION.txt)"
+          autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-linux64-lts-${GITHUB_RUN_ID}" --results-file autobuild-results.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: neoj2k-Linux-LTS-64
+          path: |
+            *.tar.zst
+            autobuild-results.json
+            stage/SOURCE_REVISION.txt
+  # A release carries the three packages and their sha256 sums, which the viewer's autobuild.xml entries need.
+  release:
+    needs: [build, build-lts]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: packages
+          pattern: neoj2k-*
+          merge-multiple: true
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cd packages
+          sha256sum *.tar.zst | tee SHA256SUMS
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes --title "$TAG" *.tar.zst SHA256SUMS

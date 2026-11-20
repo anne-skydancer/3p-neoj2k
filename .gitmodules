@@ -1,0 +1,3 @@
+[submodule "neo-j2k"]
+	path = neo-j2k
+	url = https://github.com/anne-skydancer/neo-j2k.git
