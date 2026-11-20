@@ -6,11 +6,11 @@
       <key>canonical_repo</key>
       <string>https://github.com/anne-skydancer/3p-neoj2k</string>
       <key>copyright</key>
-      <string>Copyright (c) 2026, Anne Skydancer (neo-j2k); portions Copyright (c) 2002-2012 the OpenJPEG authors (Universite catholique de Louvain, Communications and Remote Sensing Laboratory, Professor Benoit Macq, David Janssens, Yannick Verschueren, Francois-Olivier Devaux, Antonin Descampe, Herve Drolon, Parvatha Elangovan, Jerome Fimes, Kaori Hagihara, CNES, CS Systemes d'Information); see LICENSES/openjpeg.txt</string>
+      <string>Copyright (c) 2026, Anne Skydancer (neo-j2k); portions Copyright (c) 2002-2014 the OpenJPEG authors (Universite catholique de Louvain, Communications and Remote Sensing Laboratory, Professor Benoit Macq, David Janssens, Yannick Verschueren, Francois-Olivier Devaux, Antonin Descampe, Herve Drolon, Parvatha Elangovan, Jerome Fimes, Kaori Hagihara, CNES, CS Systemes d'Information); see LICENSES/openjpeg.txt</string>
       <key>description</key>
-      <string>neo-j2k: a JPEG 2000 Part 1 codec for texture-sized images, as a shared library (nj2k_* C API; OpenJPEG-shaped, with a memory API and a host-lent executor).</string>
+      <string>neo-j2k: a JPEG 2000 Part 1 codec for texture-sized images (decoder and the viewer's encoder, OpenJPEG-compatible output), built as a shared library with an nj2k_* C API; starts no threads (the host lends an executor). Contains code ported from OpenJPEG.</string>
       <key>license</key>
-      <string>BSD</string>
+      <string>BSD-2-Clause</string>
       <key>license_file</key>
       <string>LICENSES/neoj2k.txt</string>
       <key>name</key>

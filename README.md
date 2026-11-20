@@ -19,5 +19,8 @@ The source is the `neo-j2k` submodule, pinned to one commit; releases are cut wi
 neo-j2k's `main`. Local run: `NEOJ2K_SOURCE_DIR=<checkout> autobuild build -A 64 -c Release --no-configure` (with
 `AUTOBUILD_VARIABLES_FILE` set as in the workflow), then `python verify_package.py stage <checkout>`.
 
-Releasing: dispatch the Build workflow with `publish` and a `tag` (`v<version>-<n>`); the release carries the three
-packages and `SHA256SUMS`, which the viewer's `autobuild.xml` entries need.
+Releasing: tag neo-j2k's `main` commit `v<version>`, pin the submodule to it, then dispatch the Build workflow with
+`publish` and the tag `v<version>`. The package version is neo-j2k's tag (`VERSION.txt`); a build of an untagged commit
+is `<header version>.<build id>`. The release carries the three packages and `SHA256SUMS`, which the viewer's
+`autobuild.xml` entry needs (`version` equal to the tag, `license` BSD-2-Clause, `license_file` LICENSES/neoj2k.txt, which
+holds neo-j2k's and OpenJPEG's notices).

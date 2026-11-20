@@ -40,15 +40,22 @@ source_environment_tempfile="$stage/source_environment.sh"
 "$autobuild" source_environment > "$source_environment_tempfile"
 . "$source_environment_tempfile"
 
+native() { if [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then cygpath -m "$1"; else echo "$1"; fi; }
+
 # One version, in the public header (NJ2K_VERSION_*), as the library's CMakeLists reads it.
 version_of() { sed -n -E "s/^#define NJ2K_VERSION_$1 ([0-9]+)\$/\1/p" "$SOURCE_DIR/include/neoj2k/neoj2k.h" | tr -d '\r'; }
 NEOJ2K_VERSION="$(version_of MAJOR).$(version_of MINOR).$(version_of PATCH)"
 build=${AUTOBUILD_BUILD_ID:=0}
-echo "${NEOJ2K_VERSION}.${build}" > "${stage}/VERSION.txt"
+# The package version is neo-j2k's own release when the pinned commit carries its tag (v<version>); any other
+# commit is a pre-release build: <header version>.<build id>.
+if tag="$(git -C "$(native "$SOURCE_DIR")" describe --exact-match --tags --match 'v[0-9]*' HEAD 2>/dev/null)"; then
+    NEOJ2K_VERSION="${tag#v}"
+    echo "${NEOJ2K_VERSION}" > "${stage}/VERSION.txt"
+else
+    echo "${NEOJ2K_VERSION}.${build}" > "${stage}/VERSION.txt"
+fi
 
 build_dir="$(pwd)/build"
-# CMake on Windows reads native paths, not /c/... ones
-native() { if [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then cygpath -m "$1"; else echo "$1"; fi; }
 rm -rf "$build_dir" "$stage/install"
 mkdir -p "$build_dir"
 
@@ -87,7 +94,21 @@ mkdir -p "$stage/include"
 cp -r "$stage/install/include/neoj2k" "$stage/include/neoj2k"
 
 mkdir -p "$stage/LICENSES"
-cp "$SOURCE_DIR/LICENSE" "$stage/LICENSES/neoj2k.txt"
+# neoj2k.txt is the package's licence file: neo-j2k's licence, then OpenJPEG's with the notices of the code neo-j2k
+# ports from it. openjpeg.txt is the second part alone, under the name OpenJPEG's own package uses.
+{
+    cat "$SOURCE_DIR/LICENSE"
+    printf '
+
+----------------------------------------------------------------------------
+'
+    printf 'OpenJPEG (code ported into neo-j2k): licence and notices
+'
+    printf -- '----------------------------------------------------------------------------
+
+'
+    cat "$SOURCE_DIR/LICENSE.OpenJPEG"
+} > "$stage/LICENSES/neoj2k.txt"
 cp "$SOURCE_DIR/LICENSE.OpenJPEG" "$stage/LICENSES/openjpeg.txt"
 cp "$SOURCE_DIR/NOTICE.md" "$stage/LICENSES/neoj2k-notice.md"
 

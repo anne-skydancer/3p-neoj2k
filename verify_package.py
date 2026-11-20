@@ -27,6 +27,8 @@ for name in required:
     assert (stage / name).is_file(), 'package file missing: ' + name
 assert 'BSD 2-Clause' in (stage / 'LICENSES/neoj2k.txt').read_text(), 'neo-j2k licence text missing'
 assert 'Copyright' in (stage / 'LICENSES/openjpeg.txt').read_text(), 'OpenJPEG notices missing'
+combined = (stage / 'LICENSES/neoj2k.txt').read_text()
+assert 'Anne Skydancer' in combined and 'Universite catholique de Louvain' in combined, 'the licence file must hold neo-j2k and OpenJPEG notices'
 assert not list(lib.glob('*static*')) and not list(lib.glob('*.a')), 'a static library must not ship (shared only)'
 
 shared = lib / ('neoj2k.dll' if windows else 'libneoj2k.so')
