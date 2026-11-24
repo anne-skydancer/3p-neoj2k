@@ -2,13 +2,18 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026, Anne Skydancer (neo-j2k)
 #
-# Builds the neo-j2k shared library (neoj2k.dll with neoj2k.lib, libneoj2k.so) from the pinned submodule
-# and lays out the autobuild package:
+# Builds the neo-j2k shared library (neoj2k.dll with neoj2k.lib, libneoj2k.so) and the static library
+# (neoj2k_static.lib, libneoj2k.a) from the pinned submodule and lays out the autobuild package:
 #   include/neoj2k/        the public headers, with the OpenJPEG compatibility header and its compat/ names
-#   lib/release/           neoj2k.dll + neoj2k.lib (Windows), libneoj2k.so and its soname link (Linux)
+#   lib/release/           neoj2k.dll + neoj2k.lib (the DLL's import library) + neoj2k_static.lib (Windows),
+#                          libneoj2k.so, its soname link and libneoj2k.a (Linux)
 #   LICENSES/              neo-j2k's licence, OpenJPEG's (the notices of the code neo-j2k ports), NOTICE.md
-# Only the shared library ships: it exports nj2k_* only (tools/check_exports.py checks that), keeps link-time
-# code generation inside, and the viewer delay-loads it. The static library is not built.
+# The shared library exports nj2k_* only (tools/check_exports.py checks that), keeps link-time code generation
+# inside, and the viewer delay-loads it. The static library is built from the same source with the same options
+# (AVX2, no OpenSim profile), position-independent on Linux (the library's CMake always sets it, so the archive
+# also links into a shared object) and with the DLL C runtime (/MD) on Windows, as the viewer builds with; it has
+# no link-time code generation (so any compiler version links it) and no dependencies beyond libc and libm.
+# Consumers define NJ2K_STATIC when they compile against it.
 
 cd "$(dirname "$0")"
 
@@ -60,7 +65,7 @@ rm -rf "$build_dir" "$stage/install"
 mkdir -p "$build_dir"
 
 # The library alone: the oracle, harness, tools and bench stay out of the package build.
-lib_options=(-DNJ2K_BUILD_STATIC=OFF -DNJ2K_BUILD_SHARED=ON -DNJ2K_BUILD_TESTS=OFF -DNJ2K_BUILD_TOOLS=OFF
+lib_options=(-DNJ2K_BUILD_STATIC=ON -DNJ2K_BUILD_SHARED=ON -DNJ2K_MSVC_STATIC_RUNTIME=OFF -DNJ2K_BUILD_TESTS=OFF -DNJ2K_BUILD_TOOLS=OFF
              -DNJ2K_BUILD_BENCH=OFF -DNJ2K_BUILD_FUZZERS=OFF -DNJ2K_INSTALL=ON -DNJ2K_SIMD=AVX2
              -DNJ2K_PROFILE_OPENSIM=OFF -DNJ2K_WERROR=OFF -DCMAKE_INSTALL_PREFIX="$(native "$stage/install")")
 
@@ -70,7 +75,7 @@ case "$AUTOBUILD_PLATFORM" in
         cmake --build "$(native "$build_dir")" --config Release --parallel
         cmake --install "$(native "$build_dir")" --config Release
         mkdir -p "$stage/lib/release"
-        cp "$stage/install/bin/neoj2k.dll" "$stage/install/lib/neoj2k.lib" "$stage/lib/release/"
+        cp "$stage/install/bin/neoj2k.dll" "$stage/install/lib/neoj2k.lib" "$stage/install/lib/neoj2k_static.lib" "$stage/lib/release/"
         # the debug symbols, for crash dumps
         if [ -f "$build_dir/src/Release/neoj2k.pdb" ]; then cp "$build_dir/src/Release/neoj2k.pdb" "$stage/lib/release/"; fi
         ;;
@@ -82,7 +87,7 @@ case "$AUTOBUILD_PLATFORM" in
         cmake --install "$(native "$build_dir")" --config Release
         mkdir -p "$stage/lib/release"
         # the file, its soname link and the development link, as the install made them
-        cp -a "$stage"/install/lib/libneoj2k.so* "$stage/lib/release/"
+        cp -a "$stage"/install/lib/libneoj2k.so* "$stage/install/lib/libneoj2k.a" "$stage/lib/release/"
         ;;
     *)
         echo "neoj2k: no build for $AUTOBUILD_PLATFORM" >&2

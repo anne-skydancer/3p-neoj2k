@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026, Anne Skydancer (neo-j2k)
 #
-# Builds the neoj2k package (the shared library, headers and licence texts) for windows64, linux64 and
+# Builds the neoj2k package (the shared and static libraries, headers and licence texts) for windows64, linux64 and
 # linux64-lts, from the neo-j2k commit the submodule pins. A dispatch with `publish` and a `tag` also cuts a
 # GitHub release from the three packages; nothing else publishes.
 name: Build
@@ -79,9 +79,9 @@ jobs:
           python .github/scripts/buildinfo.py --name neoj2k --flavour "${{ matrix.flavour }}" \
             --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
             --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
-            --build-type "Release, shared library only, AVX2 floor, LTO inside the library" \
+            --build-type "Release, shared and static libraries, AVX2 floor, LTO inside the shared library" \
             --glibc-json glibc.json \
-            --option NJ2K_BUILD_STATIC=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+            --option NJ2K_BUILD_STATIC=ON --option NJ2K_BUILD_SHARED=ON --option NJ2K_MSVC_STATIC_RUNTIME=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
       - name: Package
         run: |
           version="$(cat stage/VERSION.txt)"
@@ -136,9 +136,9 @@ jobs:
           python3 .github/scripts/buildinfo.py --name neoj2k --flavour "$FLAVOUR" \
             --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
             --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
-            --build-type "Release, shared library only, AVX2 floor, ubuntu:24.04" \
+            --build-type "Release, shared and static libraries, AVX2 floor, ubuntu:24.04" \
             --glibc-json glibc.json \
-            --option NJ2K_BUILD_STATIC=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+            --option NJ2K_BUILD_STATIC=ON --option NJ2K_BUILD_SHARED=ON --option NJ2K_MSVC_STATIC_RUNTIME=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
       - name: Package
         run: |
           version="$(cat stage/VERSION.txt)"
