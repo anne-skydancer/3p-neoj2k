@@ -149,7 +149,8 @@ def symbols():
     return static.read_bytes().decode('latin-1')
 
 
-opj = sorted(set(re.findall(r'[A-Za-z0-9_.$@?]*(?<![A-Za-z0-9])opj_\w*', symbols())))
+# a symbol is the last word of a line; string literals (MSVC's ??_C@... of __func__ texts) are data, not names of the library
+opj = sorted({w for w in (l.split()[-1] for l in symbols().splitlines() if l.split()) if re.match(r'[_?]?opj_', w)})
 assert not opj, 'the static library must not contain opj_* symbols: ' + ', '.join(opj[:10])
 
 
