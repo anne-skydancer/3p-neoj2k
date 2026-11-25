@@ -49,6 +49,7 @@ int main(void)
 
     printf("engine: %s, version %s\n", nj2k_engine_string(), nj2k_version());
     CHECK(strncmp(nj2k_engine_string(), "neo-j2k", 7) == 0);
+    CHECK(strcmp(nj2k_version(), EXPECT_VERSION) == 0); /* the library reports the package version (VERSION.txt) */
     CHECK(nj2k_cpu_supported());
 
     /* encode, lossless, RLCP, as the viewer's reversible upload */

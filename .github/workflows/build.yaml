@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026, Anne Skydancer (neo-j2k)
 #
-# Builds the neoj2k package (the shared library, headers and licence texts) for windows64, linux64 and
-# linux64-lts, from the neo-j2k commit the submodule pins. A dispatch with `publish` and a `tag` also cuts a
+# Builds the neoj2k package (the static library, the two nj2k_* headers and licence texts; no shared library, openjp2
+# module off) for windows64, linux64 and linux64-lts, from the neo-j2k tag the submodule pins (a dirty or untagged source
+# fails the build). A dispatch with `publish` and a `tag` also cuts a
 # GitHub release from the three packages; nothing else publishes.
 name: Build
 on:
@@ -13,7 +14,7 @@ on:
         type: boolean
         default: false
       tag:
-        description: "The release tag, v<package version> (required with publish): neo-j2k's own tag v<version> on the pinned commit gives the package that version."
+        description: "The release tag, v<neo-j2k version>-<build number>, e.g. v0.1.3-1 (required with publish): the version must be the one the packages were built as (neo-j2k's own tag v<version> on the pinned commit)."
         type: string
         default: ""
   pull_request:
@@ -50,7 +51,7 @@ jobs:
         with:
           submodules: recursive
       # The package version is neo-j2k's own tag on the pinned commit (build-cmd.sh); the shallow submodule checkout above
-      # has no tags, so fetch neo-j2k's release tags, or a tagged commit is built as <version>.<build id>.
+      # has no tags, so fetch neo-j2k's release tags; the build fails if the submodule is not exactly at one.
       - name: Fetch neo-j2k's release tags
         run: git -C neo-j2k fetch --no-recurse-submodules --depth=1 origin 'refs/tags/v*:refs/tags/v*'
       - uses: actions/checkout@v7
@@ -62,15 +63,13 @@ jobs:
           python-version: '3.12'
       - name: Dependencies
         run: |
-          python -m pip install autobuild==3.9.3
+          python -m pip install autobuild==3.9.3 zstandard
           if [[ "$RUNNER_OS" == Linux ]]; then
             sudo apt-get update
             sudo apt-get install -y ninja-build
           fi
       - name: Build
         run: autobuild build -A 64 -c Release --no-configure --id "$GITHUB_RUN_ID"
-      - name: Verify the package and the library through a round trip
-        run: python verify_package.py stage neo-j2k
       - name: Report glibc requirement (Linux, report only)
         if: runner.os == 'Linux'
         run: python .github/scripts/glibc_report.py --json glibc.json stage
@@ -79,13 +78,19 @@ jobs:
           python .github/scripts/buildinfo.py --name neoj2k --flavour "${{ matrix.flavour }}" \
             --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
             --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
-            --build-type "Release, shared library only, AVX2 floor, LTO inside the library" \
+            --build-type "Release, static library only (no shared library, openjp2 module off), AVX2 floor, DLL C runtime" \
             --glibc-json glibc.json \
-            --option NJ2K_BUILD_STATIC=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+            --option NJ2K_BUILD_STATIC=ON --option NJ2K_BUILD_SHARED=OFF --option NJ2K_MODULE_OPENJP2=OFF --option NJ2K_MSVC_STATIC_RUNTIME=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+      - name: Verify the package and the library through a round trip
+        run: python verify_package.py stage neo-j2k
       - name: Package
         run: |
           version="$(cat stage/VERSION.txt)"
           autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-${{ matrix.flavour }}-${GITHUB_RUN_ID}" --results-file autobuild-results.json
+      - name: Set the archive's tar owners to root (no CI user name ships)
+        run: python .github/scripts/normalize_archive.py neoj2k-*.tar.zst
+      - name: Verify the archive (exact files, tar owners, metadata, byte-identical to the verified stage)
+        run: python verify_package.py --archive neoj2k-*.tar.zst stage
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
@@ -113,7 +118,7 @@ jobs:
         with:
           submodules: recursive
       # The package version is neo-j2k's own tag on the pinned commit (build-cmd.sh); the shallow submodule checkout above
-      # has no tags, so fetch neo-j2k's release tags, or a tagged commit is built as <version>.<build id>.
+      # has no tags, so fetch neo-j2k's release tags; the build fails if the submodule is not exactly at one.
       - name: Fetch neo-j2k's release tags
         run: git -C neo-j2k fetch --no-recurse-submodules --depth=1 origin 'refs/tags/v*:refs/tags/v*'
       - uses: actions/checkout@v7
@@ -123,12 +128,10 @@ jobs:
       - name: Install packaging tools
         run: |
           python3 -m venv /opt/ab
-          /opt/ab/bin/pip install autobuild==3.9.3
+          /opt/ab/bin/pip install autobuild==3.9.3 zstandard
           echo /opt/ab/bin >> "$GITHUB_PATH"
       - name: Build
         run: autobuild build -A 64 -c Release --no-configure --id "$GITHUB_RUN_ID"
-      - name: Verify the package and the library through a round trip
-        run: /opt/ab/bin/python verify_package.py stage neo-j2k
       - name: Check glibc requirement (fails above 2.39)
         run: python3 .github/scripts/glibc_report.py --max 2.39 --json glibc.json stage
       - name: Write build-info file
@@ -136,13 +139,19 @@ jobs:
           python3 .github/scripts/buildinfo.py --name neoj2k --flavour "$FLAVOUR" \
             --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
             --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
-            --build-type "Release, shared library only, AVX2 floor, ubuntu:24.04" \
+            --build-type "Release, static library only (no shared library, openjp2 module off), AVX2 floor, PIC, ubuntu:24.04" \
             --glibc-json glibc.json \
-            --option NJ2K_BUILD_STATIC=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+            --option NJ2K_BUILD_STATIC=ON --option NJ2K_BUILD_SHARED=OFF --option NJ2K_MODULE_OPENJP2=OFF --option NJ2K_MSVC_STATIC_RUNTIME=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
+      - name: Verify the package and the library through a round trip
+        run: /opt/ab/bin/python verify_package.py stage neo-j2k
       - name: Package
         run: |
           version="$(cat stage/VERSION.txt)"
           autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-linux64-lts-${GITHUB_RUN_ID}" --results-file autobuild-results.json
+      - name: Set the archive's tar owners to root (no CI user name ships)
+        run: /opt/ab/bin/python .github/scripts/normalize_archive.py neoj2k-*.tar.zst
+      - name: Verify the archive (exact files, tar owners, metadata, byte-identical to the verified stage)
+        run: /opt/ab/bin/python verify_package.py --archive neoj2k-*.tar.zst stage
       - uses: actions/upload-artifact@v7
         with:
           name: neoj2k-Linux-LTS-64
@@ -153,11 +162,16 @@ jobs:
   # A release carries the three packages and their sha256 sums, which the viewer's autobuild.xml entries need.
   release:
     needs: [build, build-lts]
-    if: github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.tag != ''
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish == true && inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install zstandard
       - uses: actions/download-artifact@v8
         with:
           path: packages
@@ -170,14 +184,21 @@ jobs:
         run: |
           set -euo pipefail
           cd packages
-          # the tag names the version the packages were built as (VERSION.txt, in each archive's name): v<version>
-          version="${TAG#v}"
-          [[ "$TAG" == v* ]] || { echo "::error::the tag must be v<version>"; exit 1; }
+          # the tag is v<neo-j2k version>-<build number>; the version is the one the packages were built as (VERSION.txt, in each archive's name)
+          [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-[1-9][0-9]*$ ]] || { echo "::error::the tag must be v<X.Y.Z>-<N>, e.g. v0.1.3-1"; exit 1; }
+          version="${BASH_REMATCH[1]}"
           for archive in *.tar.zst; do
             case "$archive" in
               neoj2k-"${version}"-*) ;;
-              *) echo "::error::$archive was not built as version $version: pin the submodule to neo-j2k's tag $TAG first"; exit 1 ;;
+              *) echo "::error::$archive was not built as version $version: pin the submodule to neo-j2k's tag v$version first"; exit 1 ;;
             esac
           done
+          # exactly the three verified archives (one per platform, one version, one source commit), re-checked here
+          [ "$(ls *.tar.zst | wc -l)" = 3 ] || { echo "::error::the release needs exactly three archives"; ls; exit 1; }
+          python "$GITHUB_WORKSPACE/verify_package.py" --set .
+          # a tag that exists already may point elsewhere: --target would be ignored
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then echo "::error::the tag $TAG exists already"; exit 1; fi
           sha256sum *.tar.zst | tee SHA256SUMS
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes --title "$TAG" *.tar.zst SHA256SUMS
+          notes="neo-j2k ${version} static library package ${TAG} (build ${TAG##*-}): static library only (neoj2k_static.lib on Windows, libneoj2k.a on Linux), no shared library, openjp2 module off, headers neoj2k.h and neoj2k.hpp only. Platforms: windows64, linux64, linux64-lts."
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --notes "$notes" \
+            --title "neoj2k $TAG: static library only, openjp2 module off" *.tar.zst SHA256SUMS
