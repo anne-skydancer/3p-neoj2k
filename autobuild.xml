@@ -8,7 +8,7 @@
       <key>copyright</key>
       <string>Copyright (c) 2026, Anne Skydancer (neo-j2k); portions Copyright (c) 2001-2017 the OpenJPEG authors: Universite catholique de Louvain (UCL), Belgium; Professor Benoit Macq; Antonin Descampe; Francois-Olivier Devaux; Herve Drolon, FreeImage Team; Yannick Verschueren; David Janssens; Centre National d'Etudes Spatiales (CNES), France; CS Systemes d'Information, France; Parvatha Elangovan; Jerome Fimes, Communications &amp; Systemes; Kaori Hagihara; IntoPIX SA; Callum Lerwick; Jonathan Ballard; Carl Hetherington (see LICENSES/neoj2k.txt)</string>
       <key>description</key>
-      <string>neo-j2k: a JPEG 2000 Part 1 codec for texture-sized images (decoder and the viewer's encoder, OpenJPEG-compatible output), built as a shared and a static library with an nj2k_* C API; starts no threads (the host lends an executor). Contains code ported from OpenJPEG.</string>
+      <string>neo-j2k: a JPEG 2000 Part 1 codec for texture-sized images (decoder and the viewer's encoder, OpenJPEG-compatible output), built as a static library only, with an nj2k_* C API; no shared library and no OpenJPEG-name shim; starts no threads (the host lends an executor). Contains code ported from OpenJPEG.</string>
       <key>license</key>
       <string>BSD-2-Clause</string>
       <key>license_file</key>
@@ -47,9 +47,9 @@
             <string>LICENSES/neoj2k-buildinfo.json</string>
             <string>BUILD_POLICY.txt</string>
             <string>SOURCE_REVISION.txt</string>
-            <string>include/neoj2k/*.h</string>
-            <string>include/neoj2k/*.hpp</string>
-            <string>include/neoj2k/compat/*.h</string>
+            <string>VERSION.txt</string>
+            <string>include/neoj2k/neoj2k.h</string>
+            <string>include/neoj2k/neoj2k.hpp</string>
           </array>
           <key>name</key>
           <string>common</string>
@@ -71,7 +71,6 @@
           </map>
           <key>manifest</key>
           <array>
-            <string>lib/release/libneoj2k.so*</string>
             <string>lib/release/libneoj2k.a</string>
           </array>
           <key>name</key>
@@ -94,7 +93,7 @@
           </map>
           <key>manifest</key>
           <array>
-            <string>lib/release/*</string>
+            <string>lib/release/neoj2k_static.lib</string>
           </array>
           <key>name</key>
           <string>windows</string>

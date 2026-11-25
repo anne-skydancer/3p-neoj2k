@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026, Anne Skydancer (neo-j2k)
 #
-# Builds the neo-j2k shared library (neoj2k.dll with neoj2k.lib, libneoj2k.so) and the static library
-# (neoj2k_static.lib, libneoj2k.a) from the pinned submodule and lays out the autobuild package:
-#   include/neoj2k/        the public headers, with the OpenJPEG compatibility header and its compat/ names
-#   lib/release/           neoj2k.dll + neoj2k.lib (the DLL's import library) + neoj2k_static.lib (Windows),
-#                          libneoj2k.so, its soname link and libneoj2k.a (Linux)
+# Builds the neo-j2k static library (neoj2k_static.lib on Windows, libneoj2k.a on Linux) from the pinned submodule
+# and lays out the autobuild package. The package is static-only: no shared library, no import library, and the
+# OpenJPEG-compatible shim (the openjp2 module) is off; that shim and the shared library are distributed from the
+# neo-j2k repository itself. Callers use the nj2k_* API only.
+#   include/neoj2k/        neoj2k.h and neoj2k.hpp (the OpenJPEG-name headers neoj2k_openjpeg.h and compat/ are dropped)
+#   lib/release/           neoj2k_static.lib (Windows) or libneoj2k.a (Linux)
 #   LICENSES/              neo-j2k's licence, OpenJPEG's (the notices of the code neo-j2k ports), NOTICE.md
-# The shared library exports nj2k_* only (tools/check_exports.py checks that), keeps link-time code generation
-# inside, and the viewer delay-loads it. The static library is built from the same source with the same options
-# (AVX2, no OpenSim profile), position-independent on Linux (the library's CMake always sets it, so the archive
-# also links into a shared object) and with the DLL C runtime (/MD) on Windows, as the viewer builds with; it has
-# no link-time code generation (so any compiler version links it) and no dependencies beyond libc and libm.
+# The CMake package config (neoj2kConfig*.cmake, an export of the build tree's targets) and neoj2k.pc (only generated
+# for a shared build) are not staged: the package is consumed through autobuild, not find_package.
+# Options: AVX2, no OpenSim profile, position-independent on Linux (the library's CMake always sets it, so the archive
+# also links into a shared object) and the DLL C runtime (/MD) on Windows, as the viewer builds with; no link-time
+# code generation (so any compiler version links it) and no dependencies beyond libc and libm.
 # Consumers define NJ2K_STATIC when they compile against it.
 
 cd "$(dirname "$0")"
@@ -51,13 +52,21 @@ native() { if [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then cygpath -
 version_of() { sed -n -E "s/^#define NJ2K_VERSION_$1 ([0-9]+)\$/\1/p" "$SOURCE_DIR/include/neoj2k/neoj2k.h" | tr -d '\r'; }
 NEOJ2K_VERSION="$(version_of MAJOR).$(version_of MINOR).$(version_of PATCH)"
 build=${AUTOBUILD_BUILD_ID:=0}
-# The package version is neo-j2k's own release when the pinned commit carries its tag (v<version>); any other
-# commit is a pre-release build: <header version>.<build id>.
-if tag="$(git -C "$(native "$SOURCE_DIR")" describe --exact-match --tags --match 'v[0-9]*' HEAD 2>/dev/null)"; then
+# The source must be clean and exactly on neo-j2k's release tag v<version>: no local changes, no untracked files, no
+# other commit. NEOJ2K_ALLOW_UNTAGGED=1 (never set in CI) lets a local run build any commit, as <header version>.<build id>.
+src="$(native "$SOURCE_DIR")"
+if [ -n "$(git -C "$src" status --porcelain --untracked-files=all)" ]; then
+    echo "neoj2k: the neo-j2k source is dirty (local changes or untracked files); refusing to build" >&2
+    exit 1
+fi
+if tag="$(git -C "$src" describe --exact-match --tags --match 'v[0-9]*' HEAD 2>/dev/null)"; then
     NEOJ2K_VERSION="${tag#v}"
     echo "${NEOJ2K_VERSION}" > "${stage}/VERSION.txt"
-else
+elif [ "${NEOJ2K_ALLOW_UNTAGGED:-}" = "1" ]; then
     echo "${NEOJ2K_VERSION}.${build}" > "${stage}/VERSION.txt"
+else
+    echo "neoj2k: the neo-j2k source is not exactly at a release tag v<version>; refusing to build" >&2
+    exit 1
 fi
 
 build_dir="$(pwd)/build"
@@ -65,7 +74,7 @@ rm -rf "$build_dir" "$stage/install"
 mkdir -p "$build_dir"
 
 # The library alone: the oracle, harness, tools and bench stay out of the package build.
-lib_options=(-DNJ2K_BUILD_STATIC=ON -DNJ2K_BUILD_SHARED=ON -DNJ2K_MSVC_STATIC_RUNTIME=OFF -DNJ2K_BUILD_TESTS=OFF -DNJ2K_BUILD_TOOLS=OFF
+lib_options=(-DNJ2K_BUILD_STATIC=ON -DNJ2K_BUILD_SHARED=OFF -DNJ2K_MODULE_OPENJP2=OFF -DNJ2K_MSVC_STATIC_RUNTIME=OFF -DNJ2K_BUILD_TESTS=OFF -DNJ2K_BUILD_TOOLS=OFF
              -DNJ2K_BUILD_BENCH=OFF -DNJ2K_BUILD_FUZZERS=OFF -DNJ2K_INSTALL=ON -DNJ2K_SIMD=AVX2
              -DNJ2K_PROFILE_OPENSIM=OFF -DNJ2K_WERROR=OFF -DCMAKE_INSTALL_PREFIX="$(native "$stage/install")")
 
@@ -75,9 +84,7 @@ case "$AUTOBUILD_PLATFORM" in
         cmake --build "$(native "$build_dir")" --config Release --parallel
         cmake --install "$(native "$build_dir")" --config Release
         mkdir -p "$stage/lib/release"
-        cp "$stage/install/bin/neoj2k.dll" "$stage/install/lib/neoj2k.lib" "$stage/install/lib/neoj2k_static.lib" "$stage/lib/release/"
-        # the debug symbols, for crash dumps
-        if [ -f "$build_dir/src/Release/neoj2k.pdb" ]; then cp "$build_dir/src/Release/neoj2k.pdb" "$stage/lib/release/"; fi
+        cp "$stage/install/lib/neoj2k_static.lib" "$stage/lib/release/"
         ;;
     linux*)
         # The viewer's flags (-fno-stack-protector, the C++ standard the package sets itself) are the library's
@@ -86,8 +93,7 @@ case "$AUTOBUILD_PLATFORM" in
         cmake --build "$build_dir" --config Release
         cmake --install "$(native "$build_dir")" --config Release
         mkdir -p "$stage/lib/release"
-        # the file, its soname link and the development link, as the install made them
-        cp -a "$stage"/install/lib/libneoj2k.so* "$stage/install/lib/libneoj2k.a" "$stage/lib/release/"
+        cp "$stage/install/lib/libneoj2k.a" "$stage/lib/release/"
         ;;
     *)
         echo "neoj2k: no build for $AUTOBUILD_PLATFORM" >&2
@@ -95,8 +101,9 @@ case "$AUTOBUILD_PLATFORM" in
         ;;
 esac
 
-mkdir -p "$stage/include"
-cp -r "$stage/install/include/neoj2k" "$stage/include/neoj2k"
+# Only the two headers of the nj2k_* API; the install also holds the OpenJPEG-name headers, which stay out.
+mkdir -p "$stage/include/neoj2k"
+cp "$stage/install/include/neoj2k/neoj2k.h" "$stage/install/include/neoj2k/neoj2k.hpp" "$stage/include/neoj2k/"
 
 mkdir -p "$stage/LICENSES"
 # neoj2k.txt is the package's licence file: neo-j2k's licence, then OpenJPEG's with the notices of the code neo-j2k
@@ -114,6 +121,7 @@ mkdir -p "$stage/LICENSES"
 cp "$SOURCE_DIR/LICENSE.OpenJPEG" "$stage/LICENSES/openjpeg.txt"
 cp "$SOURCE_DIR/NOTICE.md" "$stage/LICENSES/neoj2k-notice.md"
 
-printf 'backend=cpu\nsimd=avx2\nprecise_fp=on\nshared_only=1\nthreads=none (the host lends an executor)\nprofile_opensim=off\n' > "$stage/BUILD_POLICY.txt"
-git -C "$(native "$SOURCE_DIR")" rev-parse HEAD > "$stage/SOURCE_REVISION.txt"
-rm -rf "$stage/install"
+printf 'backend=cpu\nsimd=avx2\nprecise_fp=on\nstatic=1\nshared=0\nopenjpeg_shim=off\nthreads=none (the host lends an executor)\nprofile_opensim=off\n' > "$stage/BUILD_POLICY.txt"
+git -C "$src" rev-parse HEAD > "$stage/SOURCE_REVISION.txt"
+# nothing but the package files stays in the stage
+rm -rf "$stage/install" "$source_environment_tempfile"
