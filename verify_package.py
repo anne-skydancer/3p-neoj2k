@@ -136,9 +136,10 @@ for o in ('NJ2K_BUILD_STATIC=ON', 'NJ2K_BUILD_SHARED=OFF', 'NJ2K_MODULE_OPENJP2=
 subprocess.run([sys.executable, str(source / 'tools' / 'check_objects.py'), '--library', str(static)], check=True)
 
 
-# no opj_* symbols: the shim is off. nm or llvm-nm where there is one, dumpbin on Windows, else a scan of the bytes
+# no exported opj_* symbols: the shim is off (file-local names such as MSVC's unwind-chain symbols of internal functions
+# do not count). nm or llvm-nm where there is one, dumpbin on Windows, else a scan of the bytes
 def symbols():
-    for tool in (['nm', '-A'], ['llvm-nm', '-A'], ['dumpbin', '/symbols']):
+    for tool in (['nm', '-A', '-g', '--defined-only'], ['llvm-nm', '-A', '-g', '--defined-only'], ['dumpbin', '/symbols']):
         if shutil.which(tool[0]):
             r = subprocess.run(tool + [str(static)], capture_output=True, text=True, errors='replace')
             if r.returncode == 0 and r.stdout.strip():
