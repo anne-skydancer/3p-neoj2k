@@ -6,8 +6,13 @@ shared library, no import library, none of the OpenJPEG-name headers, no opj_* s
 lossless round trip through the static library from a program built against the staged headers with NJ2K_STATIC.
 
 usage: verify_package.py STAGE_DIR NEOJ2K_SOURCE_DIR
-       verify_package.py --archive ARCHIVE.tar.zst   (the archive's exact file list only)
+       verify_package.py --archive ARCHIVE.tar.zst [STAGE_DIR]
+           the archive's file list, tar owners and metadata files; with STAGE_DIR, every member byte-identical to the stage
+       verify_package.py --set DIR
+           the release set: exactly one archive each for windows64, linux64 and linux64-lts, each checked as above,
+           one version, one SOURCE_REVISION.txt, identical licence files and headers
 """
+import filecmp
 import json
 import os
 import re
@@ -18,10 +23,22 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+if not __debug__:
+    sys.exit('verify_package.py must not run under python -O (its checks are asserts)')
+
+PLATFORMS = ('windows64', 'linux64', 'linux64-lts')
+# The options build-cmd.sh configures with (lib_options). The build-info json and the build's CMakeCache.txt must both
+# hold exactly these values.
+OPTIONS = {'NJ2K_BUILD_STATIC': 'ON', 'NJ2K_BUILD_SHARED': 'OFF', 'NJ2K_MODULE_OPENJP2': 'OFF', 'NJ2K_MSVC_STATIC_RUNTIME': 'OFF',
+           'NJ2K_SIMD': 'AVX2', 'NJ2K_PROFILE_OPENSIM': 'OFF'}
+METADATA = ('VERSION.txt', 'BUILD_POLICY.txt', 'SOURCE_REVISION.txt', 'LICENSES/neoj2k-buildinfo.json')
+HOST_PATH = re.compile(r'(?<![A-Za-z])[A-Za-z]:[\\/]|/home/|/Users/|/root/|/runner/|/__w/|/tmp/|/mnt/|/opt/')
+
 
 def allowed(windows):
     """The exact file list of a package. Nothing else may be in the stage or the archive: no build-tree leftovers,
-    tests, .git, temporary files, debug files, CMake or pkg-config files, or empty directories."""
+    tests, .git, temporary files, debug files, CMake or pkg-config files, shared or import libraries, headers of the
+    OpenJPEG-name shim, or empty directories."""
     return {'VERSION.txt', 'BUILD_POLICY.txt', 'SOURCE_REVISION.txt',
             'LICENSES/neoj2k.txt', 'LICENSES/openjpeg.txt', 'LICENSES/neoj2k-notice.md', 'LICENSES/neoj2k-buildinfo.json',
             'include/neoj2k/neoj2k.h', 'include/neoj2k/neoj2k.hpp',
@@ -42,30 +59,100 @@ def check_listing(files, dirs, windows, extra=()):
         assert d in parents or d in ('', '.'), 'empty directory: ' + d
 
 
+def check_metadata(root, extra_text=()):
+    """Content checks on the metadata files of a stage or an extracted archive: no dirty or local marker, no host path,
+    no carriage return, a plain version, static-only and shim off, the options recorded. Returns the metadata texts."""
+    meta = {n: (root / n).read_text() for n in METADATA}
+    texts = dict(meta)
+    for n in extra_text:
+        if (root / n).exists():
+            texts[n] = (root / n).read_text()
+    for n, text in texts.items():
+        assert not re.search(r'dirty|\+local', text, re.I), n + ' carries a dirty or local marker'
+        assert not HOST_PATH.search(text), n + ' leaks a host path'
+    for n, text in meta.items():
+        assert '\r' not in text, n + ' has a carriage return'
+    assert re.fullmatch(r'\d+\.\d+\.\d+', meta['VERSION.txt'].strip()), 'the version must be plain X.Y.Z: ' + meta['VERSION.txt']
+    assert re.fullmatch(r'[0-9a-f]{40}', meta['SOURCE_REVISION.txt'].strip()), 'SOURCE_REVISION.txt must be one commit hash'
+    policy = meta['BUILD_POLICY.txt']
+    assert 'static=1' in policy and 'shared=0' in policy and 'openjpeg_shim=off' in policy, 'BUILD_POLICY.txt must say static-only, shim off'
+    opts = json.loads(meta['LICENSES/neoj2k-buildinfo.json'])['configure_options']
+    for k, v in OPTIONS.items():
+        assert k + '=' + v in opts, 'the build-info json must record %s=%s' % (k, v)
+    return meta
+
+
+def open_tar(archive):
+    try:
+        import zstandard
+        return tarfile.open(fileobj=zstandard.ZstdDecompressor().stream_reader(archive.open('rb')), mode='r|')
+    except ImportError:
+        from compression import zstd  # Python 3.14
+        return tarfile.open(fileobj=zstd.open(archive), mode='r|')
+
+
 def norm(name):
     name = name[2:] if name.startswith('./') else name
     return name.rstrip('/')
 
 
-if sys.argv[1] == '--archive':
-    archive = Path(sys.argv[2])
-    try:
-        import zstandard
-        tar = tarfile.open(fileobj=zstandard.ZstdDecompressor().stream_reader(archive.open('rb')), mode='r|')
-    except ImportError:
-        from compression import zstd  # Python 3.14
-        tar = tarfile.open(fileobj=zstd.open(archive), mode='r|')
+def platform_of(archive):
+    m = re.fullmatch(r'neoj2k-\d+\.\d+\.\d+-(windows64|linux64-lts|linux64)-\d+\.tar\.zst', archive.name)
+    assert m, 'archive name must be neoj2k-<X.Y.Z>-<windows64|linux64|linux64-lts>-<run id>.tar.zst: ' + archive.name
+    return m.group(1)
+
+
+def check_archive(archive, stage, out):
+    """List, extract (into the empty directory out) and check one archive. Returns its platform."""
+    platform = platform_of(archive)
     files, dirs = set(), set()
-    for m in tar:
-        if m.isfile():
-            files.add(norm(m.name))
-        elif m.isdir():
-            dirs.add(norm(m.name))
-        else:
-            raise AssertionError('neither a plain file nor a directory in the archive: ' + m.name)
+    with open_tar(archive) as tar:
+        for m in tar:
+            assert m.uname in ('root', '') and m.gname in ('root', '') and m.uid == 0 and m.gid == 0, \
+                'tar owner of %s is %s/%s (%d/%d), not root' % (m.name, m.uname, m.gname, m.uid, m.gid)
+            name = norm(m.name)
+            if m.isfile():
+                files.add(name)
+                target = out / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(tar.extractfile(m).read())
+            elif m.isdir():
+                dirs.add(name)
+            else:
+                raise AssertionError('neither a plain file nor a directory in the archive: ' + m.name)
     print('\n'.join(sorted(files)))
-    check_listing(files, dirs, 'windows' in archive.name, extra=('autobuild-package.xml',))
-    print('PASS: the archive holds exactly the allowlisted files: ' + archive.name)
+    check_listing(files, dirs, platform.startswith('windows'), extra=('autobuild-package.xml',))
+    check_metadata(out, extra_text=('autobuild-package.xml',))
+    if stage is not None:
+        for f in sorted(files - {'autobuild-package.xml'}):
+            assert filecmp.cmp(out / f, stage / f, shallow=False), 'archive member differs from the verified stage: ' + f
+    print('PASS: the archive holds exactly the allowlisted files, with clean metadata: ' + archive.name)
+    return platform
+
+
+if len(sys.argv) < 3:
+    sys.exit(__doc__)
+
+if sys.argv[1] == '--archive':
+    with tempfile.TemporaryDirectory() as tmp:
+        check_archive(Path(sys.argv[2]), Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else None, Path(tmp))
+    sys.exit(0)
+
+if sys.argv[1] == '--set':
+    got = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for a in sorted(Path(sys.argv[2]).glob('*.tar.zst')):
+            out = Path(tmp) / a.name
+            out.mkdir()
+            platform = check_archive(a, None, out)
+            assert platform not in got, 'two archives for ' + platform
+            got[platform] = out
+        assert sorted(got) == sorted(PLATFORMS), 'the release needs exactly one archive each for %s, found %s' % (PLATFORMS, sorted(got))
+        for n in ('VERSION.txt', 'SOURCE_REVISION.txt', 'LICENSES/neoj2k.txt', 'LICENSES/openjpeg.txt', 'LICENSES/neoj2k-notice.md',
+                  'include/neoj2k/neoj2k.h', 'include/neoj2k/neoj2k.hpp'):
+            for p in PLATFORMS[1:]:
+                assert filecmp.cmp(got[PLATFORMS[0]] / n, got[p] / n, shallow=False), '%s differs between %s and %s' % (n, PLATFORMS[0], p)
+    print('PASS: the release set is three clean archives of one version, one source commit and one set of licences and headers')
     sys.exit(0)
 
 windows = os.name == 'nt'
@@ -78,35 +165,19 @@ files = {p.relative_to(stage).as_posix() for p in stage.rglob('*') if p.is_file(
 dirs = {p.relative_to(stage).as_posix() for p in stage.rglob('*') if p.is_dir()}
 print('\n'.join(sorted(files)))
 check_listing(files, dirs, windows, extra=('autobuild-package.xml',))
-for pattern in ('*.dll', '*.so', '*.so.*', '*.dylib', '*.pdb', 'neoj2k.lib', '*.cmake', '*.pc'):
-    found = [p.relative_to(stage).as_posix() for p in stage.rglob(pattern)]
-    assert not found, 'shared, import, debug or config files must not be packaged: ' + ', '.join(found)
-for dropped in ('include/neoj2k/neoj2k_openjpeg.h', 'include/neoj2k/compat/openjpeg.h', 'include/neoj2k/compat/opj_config.h'):
-    assert not (stage / dropped).exists(), 'header of the OpenJPEG shim must not be packaged: ' + dropped
 
 
 def git(*args):
     return subprocess.run(['git', '-C', str(source)] + list(args), capture_output=True, text=True, check=True).stdout.strip()
 
 
-# clean source: no local changes, exactly at the release tag, and the package says so
-assert not git('status', '--porcelain', '--untracked-files=all'), 'the neo-j2k source is dirty'
+# clean source: no local changes of any kind (ignored files included), exactly at the release tag, and the package says so
+assert not git('status', '--porcelain', '--untracked-files=all', '--ignored'), 'the neo-j2k source is dirty'
 tag = git('describe', '--exact-match', '--tags', '--match', 'v[0-9]*', 'HEAD')
-version = (stage / 'VERSION.txt').read_text().strip()
-assert re.fullmatch(r'\d+\.\d+\.\d+', version), 'the version must be plain X.Y.Z: ' + version
+meta = check_metadata(stage)
+version = meta['VERSION.txt'].strip()
 assert version == tag[1:], 'VERSION.txt (%s) must equal the source tag (%s)' % (version, tag)
-revision = (stage / 'SOURCE_REVISION.txt').read_text().strip()
-assert revision == git('rev-parse', tag + '^{commit}') == git('rev-parse', 'HEAD'), 'SOURCE_REVISION.txt must be the tag commit'
-meta = {n: (stage / n).read_text() for n in ('VERSION.txt', 'BUILD_POLICY.txt', 'SOURCE_REVISION.txt', 'LICENSES/neoj2k-buildinfo.json')}
-for n, text in meta.items():
-    assert not re.search(r'dirty|\+local', text, re.I), n + ' carries a dirty or local marker'
-assert not re.search(rb'\d+\.\d+\.\d+(-dirty|\+dirty|\+local)', static.read_bytes()), 'the library carries a dirty or local version string'
-
-# clean archive: no host paths in the metadata; licence texts byte-identical to neo-j2k's at the tag
-host_path = re.compile(r'(?<![A-Za-z])[A-Za-z]:[\\/]|/home/|/Users/|/root/|/runner/|/__w/')
-for n, text in meta.items():
-    assert not host_path.search(text), n + ' leaks a host path'
-    assert str(stage) not in text and str(Path.cwd()) not in text, n + ' leaks a host path'
+assert meta['SOURCE_REVISION.txt'].strip() == git('rev-parse', tag + '^{commit}') == git('rev-parse', 'HEAD'), 'SOURCE_REVISION.txt must be the tag commit'
 
 
 def src(n):
@@ -117,6 +188,24 @@ def pkg(n):
     return (stage / n).read_bytes()
 
 
+# the version the library reports comes from the header macros: the header (the source's and the staged one) must say the tag's version
+for h in (source / 'include/neoj2k/neoj2k.h', stage / 'include/neoj2k/neoj2k.h'):
+    text = h.read_text()
+    v = '.'.join(re.search(r'^#define NJ2K_VERSION_%s (\d+)\s*$' % k, text, re.M).group(1) for k in ('MAJOR', 'MINOR', 'PATCH'))
+    assert v == version, '%s says %s, the tag says %s' % (h, v, version)
+assert pkg('include/neoj2k/neoj2k.h') == src('include/neoj2k/neoj2k.h') and pkg('include/neoj2k/neoj2k.hpp') == src('include/neoj2k/neoj2k.hpp'), \
+    'the staged headers must be the source headers byte for byte'
+
+# the options recorded are the options CMake used
+cache = {}
+for line in (Path(__file__).resolve().parent / 'build' / 'CMakeCache.txt').read_text().splitlines():
+    m = re.match(r'([A-Za-z0-9_]+):[A-Z]+=(.*)$', line)
+    if m:
+        cache[m.group(1)] = m.group(2)
+for k, v in OPTIONS.items():
+    assert cache.get(k) == v, 'CMakeCache.txt has %s=%s, the package build must use %s' % (k, cache.get(k), v)
+
+# clean archive: licence texts byte-identical to neo-j2k's at the tag
 assert pkg('LICENSES/openjpeg.txt') == src('LICENSE.OpenJPEG'), 'openjpeg.txt differs from neo-j2k LICENSE.OpenJPEG'
 assert pkg('LICENSES/neoj2k-notice.md') == src('NOTICE.md'), 'neoj2k-notice.md differs from neo-j2k NOTICE.md'
 assert pkg('LICENSES/neoj2k.txt').startswith(src('LICENSE')) and pkg('LICENSES/neoj2k.txt').endswith(src('LICENSE.OpenJPEG')), \
@@ -125,19 +214,12 @@ assert 'BSD 2-Clause' in (stage / 'LICENSES/neoj2k.txt').read_text(), 'neo-j2k l
 combined = (stage / 'LICENSES/neoj2k.txt').read_text()
 assert 'Anne Skydancer' in combined and 'Universite catholique de Louvain' in combined, 'the licence file must hold neo-j2k and OpenJPEG notices'
 
-# the metadata says static-only, shim off
-policy = meta['BUILD_POLICY.txt']
-assert 'static=1' in policy and 'shared=0' in policy and 'openjpeg_shim=off' in policy, 'BUILD_POLICY.txt must say static-only, shim off'
-opts = json.loads(meta['LICENSES/neoj2k-buildinfo.json'])['configure_options']
-for o in ('NJ2K_BUILD_STATIC=ON', 'NJ2K_BUILD_SHARED=OFF', 'NJ2K_MODULE_OPENJP2=OFF', 'NJ2K_SIMD=AVX2', 'NJ2K_PROFILE_OPENSIM=OFF'):
-    assert o in opts, 'the build-info json must record ' + o
-
 # the static library: no global state, no initialisers, no link-time code generation (the library's own checker)
 subprocess.run([sys.executable, str(source / 'tools' / 'check_objects.py'), '--library', str(static)], check=True)
 
 
 # no exported opj_* symbols: the shim is off (file-local names such as MSVC's unwind-chain symbols of internal functions
-# do not count). nm or llvm-nm where there is one, dumpbin on Windows, else a scan of the bytes
+# do not count). The listing must come from a symbol tool and must show the library's own nj2k_ API.
 def symbols():
     for tool in (['nm', '-A', '-g', '--defined-only'], ['llvm-nm', '-A', '-g', '--defined-only'], ['dumpbin', '/symbols']):
         if shutil.which(tool[0]):
@@ -145,19 +227,20 @@ def symbols():
             if r.returncode == 0 and r.stdout.strip():
                 print('symbols listed with ' + tool[0])
                 return r.stdout
-    print('no symbol tool found: scanning the archive bytes')
-    return static.read_bytes().decode('latin-1')
+    raise AssertionError('no symbol tool (nm, llvm-nm, dumpbin) listed the static library')
 
 
 # a symbol is the last word of a line; string literals (MSVC's ??_C@... of __func__ texts) are data, not names of the library
-opj = sorted({w for w in (l.split()[-1] for l in symbols().splitlines() if l.split()) if re.match(r'[_?]?opj_', w)})
+names = {l.split()[-1] for l in symbols().splitlines() if l.split()}
+assert any(re.fullmatch(r'_?nj2k_version', w) for w in names), 'the symbol listing does not show nj2k_version: the check would be vacuous'
+opj = sorted(w for w in names if re.match(r'[_?]?opj_', w))
 assert not opj, 'the static library must not contain opj_* symbols: ' + ', '.join(opj[:10])
 
 
 def smoke(tmp):
     build = Path(tmp) / 'smoke_static'
     here = Path(__file__).resolve().parent / 'tests'
-    configure = ['cmake', '-S', str(here), '-B', str(build), '-DSTAGE=' + stage.as_posix()]
+    configure = ['cmake', '-S', str(here), '-B', str(build), '-DSTAGE=' + stage.as_posix(), '-DEXPECT_VERSION=' + version]
     if not windows:
         configure += ['-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release']
     subprocess.run(configure, check=True)
@@ -171,4 +254,4 @@ def smoke(tmp):
 
 with tempfile.TemporaryDirectory() as tmp:
     smoke(tmp)
-print('PASS: exact file list, clean source at ' + tag + ', licences, static-only without shim symbols, and a lossless round trip through the static library')
+print('PASS: exact file list, clean source at ' + tag + ', licences, static-only without shim symbols, version, and a lossless round trip through the static library')

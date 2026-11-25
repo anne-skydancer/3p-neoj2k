@@ -9,8 +9,10 @@
 #   include/neoj2k/        neoj2k.h and neoj2k.hpp (the OpenJPEG-name headers neoj2k_openjpeg.h and compat/ are dropped)
 #   lib/release/           neoj2k_static.lib (Windows) or libneoj2k.a (Linux)
 #   LICENSES/              neo-j2k's licence, OpenJPEG's (the notices of the code neo-j2k ports), NOTICE.md
-# The CMake package config (neoj2kConfig*.cmake, an export of the build tree's targets) and neoj2k.pc (only generated
-# for a shared build) are not staged: the package is consumed through autobuild, not find_package.
+# The CMake package config (neoj2kConfig*.cmake, which with the shared library off exports the static target only) and
+# neoj2k.pc (only generated for a shared build) are not staged: the install tree's config points at lib/neoj2k_static.lib
+# and include/, while this package keeps the library in lib/release/, so a shipped config would be wrong; the package is
+# consumed through autobuild, not find_package.
 # Options: AVX2, no OpenSim profile, position-independent on Linux (the library's CMake always sets it, so the archive
 # also links into a shared object) and the DLL C runtime (/MD) on Windows, as the viewer builds with; no link-time
 # code generation (so any compiler version links it) and no dependencies beyond libc and libm.
@@ -39,6 +41,8 @@ else
 fi
 
 stage="$(pwd)/stage"
+# nothing from an earlier run stays in the stage
+rm -rf "$stage"
 mkdir -p "$stage"
 
 # load autobuild provided shell functions and variables
@@ -47,13 +51,8 @@ source_environment_tempfile="$stage/source_environment.sh"
 . "$source_environment_tempfile"
 
 native() { if [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then cygpath -m "$1"; else echo "$1"; fi; }
-
-# One version, in the public header (NJ2K_VERSION_*), as the library's CMakeLists reads it.
-version_of() { sed -n -E "s/^#define NJ2K_VERSION_$1 ([0-9]+)\$/\1/p" "$SOURCE_DIR/include/neoj2k/neoj2k.h" | tr -d '\r'; }
-NEOJ2K_VERSION="$(version_of MAJOR).$(version_of MINOR).$(version_of PATCH)"
-build=${AUTOBUILD_BUILD_ID:=0}
 # The source must be clean and exactly on neo-j2k's release tag v<version>: no local changes, no untracked files, no
-# other commit. NEOJ2K_ALLOW_UNTAGGED=1 (never set in CI) lets a local run build any commit, as <header version>.<build id>.
+# other commit. There is no override: a package is always the exact tag, and verify_package.py checks the same.
 src="$(native "$SOURCE_DIR")"
 if [ -n "$(git -C "$src" status --porcelain --untracked-files=all)" ]; then
     echo "neoj2k: the neo-j2k source is dirty (local changes or untracked files); refusing to build" >&2
@@ -62,8 +61,6 @@ fi
 if tag="$(git -C "$src" describe --exact-match --tags --match 'v[0-9]*' HEAD 2>/dev/null)"; then
     NEOJ2K_VERSION="${tag#v}"
     echo "${NEOJ2K_VERSION}" > "${stage}/VERSION.txt"
-elif [ "${NEOJ2K_ALLOW_UNTAGGED:-}" = "1" ]; then
-    echo "${NEOJ2K_VERSION}.${build}" > "${stage}/VERSION.txt"
 else
     echo "neoj2k: the neo-j2k source is not exactly at a release tag v<version>; refusing to build" >&2
     exit 1

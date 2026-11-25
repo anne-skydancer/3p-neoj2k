@@ -51,7 +51,7 @@ jobs:
         with:
           submodules: recursive
       # The package version is neo-j2k's own tag on the pinned commit (build-cmd.sh); the shallow submodule checkout above
-      # has no tags, so fetch neo-j2k's release tags, or a tagged commit is built as <version>.<build id>.
+      # has no tags, so fetch neo-j2k's release tags; the build fails if the submodule is not exactly at one.
       - name: Fetch neo-j2k's release tags
         run: git -C neo-j2k fetch --no-recurse-submodules --depth=1 origin 'refs/tags/v*:refs/tags/v*'
       - uses: actions/checkout@v7
@@ -78,7 +78,7 @@ jobs:
           python .github/scripts/buildinfo.py --name neoj2k --flavour "${{ matrix.flavour }}" \
             --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
             --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
-            --build-type "Release, static library only (no shared library, OpenJPEG shim off), AVX2 floor, /MD on Windows" \
+            --build-type "Release, static library only (no shared library, OpenJPEG shim off), AVX2 floor, DLL C runtime" \
             --glibc-json glibc.json \
             --option NJ2K_BUILD_STATIC=ON --option NJ2K_BUILD_SHARED=OFF --option NJ2K_MODULE_OPENJP2=OFF --option NJ2K_MSVC_STATIC_RUNTIME=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
       - name: Verify the package and the library through a round trip
@@ -87,8 +87,8 @@ jobs:
         run: |
           version="$(cat stage/VERSION.txt)"
           autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-${{ matrix.flavour }}-${GITHUB_RUN_ID}" --results-file autobuild-results.json
-      - name: Verify the archive holds exactly the allowlisted files
-        run: python verify_package.py --archive neoj2k-*.tar.zst
+      - name: Verify the archive (exact files, tar owners, metadata, byte-identical to the verified stage)
+        run: python verify_package.py --archive neoj2k-*.tar.zst stage
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
@@ -116,7 +116,7 @@ jobs:
         with:
           submodules: recursive
       # The package version is neo-j2k's own tag on the pinned commit (build-cmd.sh); the shallow submodule checkout above
-      # has no tags, so fetch neo-j2k's release tags, or a tagged commit is built as <version>.<build id>.
+      # has no tags, so fetch neo-j2k's release tags; the build fails if the submodule is not exactly at one.
       - name: Fetch neo-j2k's release tags
         run: git -C neo-j2k fetch --no-recurse-submodules --depth=1 origin 'refs/tags/v*:refs/tags/v*'
       - uses: actions/checkout@v7
@@ -146,8 +146,8 @@ jobs:
         run: |
           version="$(cat stage/VERSION.txt)"
           autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-linux64-lts-${GITHUB_RUN_ID}" --results-file autobuild-results.json
-      - name: Verify the archive holds exactly the allowlisted files
-        run: /opt/ab/bin/python verify_package.py --archive neoj2k-*.tar.zst
+      - name: Verify the archive (exact files, tar owners, metadata, byte-identical to the verified stage)
+        run: /opt/ab/bin/python verify_package.py --archive neoj2k-*.tar.zst stage
       - uses: actions/upload-artifact@v7
         with:
           name: neoj2k-Linux-LTS-64
@@ -158,11 +158,16 @@ jobs:
   # A release carries the three packages and their sha256 sums, which the viewer's autobuild.xml entries need.
   release:
     needs: [build, build-lts]
-    if: github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.tag != ''
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish == true && inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install zstandard
       - uses: actions/download-artifact@v8
         with:
           path: packages
@@ -176,7 +181,7 @@ jobs:
           set -euo pipefail
           cd packages
           # the tag is v<neo-j2k version>-<build number>; the version is the one the packages were built as (VERSION.txt, in each archive's name)
-          [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-[0-9]+$ ]] || { echo "::error::the tag must be v<X.Y.Z>-<N>, e.g. v0.1.3-1"; exit 1; }
+          [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-[1-9][0-9]*$ ]] || { echo "::error::the tag must be v<X.Y.Z>-<N>, e.g. v0.1.3-1"; exit 1; }
           version="${BASH_REMATCH[1]}"
           for archive in *.tar.zst; do
             case "$archive" in
@@ -184,6 +189,11 @@ jobs:
               *) echo "::error::$archive was not built as version $version: pin the submodule to neo-j2k's tag v$version first"; exit 1 ;;
             esac
           done
+          # exactly the three verified archives (one per platform, one version, one source commit), re-checked here
+          [ "$(ls *.tar.zst | wc -l)" = 3 ] || { echo "::error::the release needs exactly three archives"; ls; exit 1; }
+          python "$GITHUB_WORKSPACE/verify_package.py" --set .
+          # a tag that exists already may point elsewhere: --target would be ignored
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then echo "::error::the tag $TAG exists already"; exit 1; fi
           sha256sum *.tar.zst | tee SHA256SUMS
-          notes="neo-j2k ${version} static library package (build ${TAG##*-}): static library only (neoj2k_static.lib on Windows, libneoj2k.a on Linux), no shared library, OpenJPEG shim off, headers neoj2k.h and neoj2k.hpp only. Platforms: windows64, linux64, linux64-lts."
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes --notes "$notes"             --title "neoj2k $TAG: static library only, OpenJPEG shim off" *.tar.zst SHA256SUMS
+          notes="neo-j2k ${version} static library package ${TAG} (build ${TAG##*-}): static library only (neoj2k_static.lib on Windows, libneoj2k.a on Linux), no shared library, OpenJPEG shim off, headers neoj2k.h and neoj2k.hpp only. Platforms: windows64, linux64, linux64-lts."
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --notes "$notes"             --title "neoj2k $TAG: static library only, OpenJPEG shim off" *.tar.zst SHA256SUMS
