@@ -4,7 +4,7 @@
 #
 # Builds the neo-j2k static library (neoj2k_static.lib on Windows, libneoj2k.a on Linux) from the pinned submodule
 # and lays out the autobuild package. The package is static-only: no shared library, no import library, and the
-# OpenJPEG-compatible shim (the openjp2 module) is off; that shim and the shared library are distributed from the
+# openjp2 module is off; the neo-j2k library with the openjp2 module on is distributed from the
 # neo-j2k repository itself. Callers use the nj2k_* API only.
 #   include/neoj2k/        neoj2k.h and neoj2k.hpp (the OpenJPEG-name headers neoj2k_openjpeg.h and compat/ are dropped)
 #   lib/release/           neoj2k_static.lib (Windows) or libneoj2k.a (Linux)
@@ -120,7 +120,7 @@ mkdir -p "$stage/LICENSES"
 cp "$SOURCE_DIR/LICENSE.OpenJPEG" "$stage/LICENSES/openjpeg.txt"
 cp "$SOURCE_DIR/NOTICE.md" "$stage/LICENSES/neoj2k-notice.md"
 
-printf 'backend=cpu\nsimd=avx2\nprecise_fp=on\nstatic=1\nshared=0\nopenjpeg_shim=off\nthreads=none (the host lends an executor)\nprofile_opensim=off\n' > "$stage/BUILD_POLICY.txt"
+printf 'backend=cpu\nsimd=avx2\nprecise_fp=on\nstatic=1\nshared=0\nopenjp2_module=off\nthreads=none (the host lends an executor)\nprofile_opensim=off\n' > "$stage/BUILD_POLICY.txt"
 git -C "$src" rev-parse HEAD > "$stage/SOURCE_REVISION.txt"
 # nothing but the package files stays in the stage
 rm -rf "$stage/install" "$source_environment_tempfile"

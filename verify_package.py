@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026, Anne Skydancer (neo-j2k)
-"""Check the package: its exact file list, licences, clean source, that it is static-only with the OpenJPEG shim off (no
+"""Check the package: its exact file list, licences, clean source, that it is static-only with the openjp2 module off (no
 shared library, no import library, none of the OpenJPEG-name headers, no opj_* symbols in the static library), and a
 lossless round trip through the static library from a program built against the staged headers with NJ2K_STATIC.
 
@@ -37,8 +37,8 @@ HOST_PATH = re.compile(r'(?<![A-Za-z])[A-Za-z]:[\\/]|/home/|/Users/|/root/|/runn
 
 def allowed(windows):
     """The exact file list of a package. Nothing else may be in the stage or the archive: no build-tree leftovers,
-    tests, .git, temporary files, debug files, CMake or pkg-config files, shared or import libraries, headers of the
-    OpenJPEG-name shim, or empty directories."""
+    tests, .git, temporary files, debug files, CMake or pkg-config files, shared or import libraries, the
+    OpenJPEG-name headers, or empty directories."""
     return {'VERSION.txt', 'BUILD_POLICY.txt', 'SOURCE_REVISION.txt',
             'LICENSES/neoj2k.txt', 'LICENSES/openjpeg.txt', 'LICENSES/neoj2k-notice.md', 'LICENSES/neoj2k-buildinfo.json',
             'include/neoj2k/neoj2k.h', 'include/neoj2k/neoj2k.hpp',
@@ -61,7 +61,7 @@ def check_listing(files, dirs, windows, extra=()):
 
 def check_metadata(root, extra_text=()):
     """Content checks on the metadata files of a stage or an extracted archive: no dirty or local marker, no host path,
-    no carriage return, a plain version, static-only and shim off, the options recorded. Returns the metadata texts."""
+    no carriage return, a plain version, static-only and openjp2 module off, the options recorded. Returns the metadata texts."""
     meta = {n: (root / n).read_text() for n in METADATA}
     texts = dict(meta)
     for n in extra_text:
@@ -75,7 +75,7 @@ def check_metadata(root, extra_text=()):
     assert re.fullmatch(r'\d+\.\d+\.\d+', meta['VERSION.txt'].strip()), 'the version must be plain X.Y.Z: ' + meta['VERSION.txt']
     assert re.fullmatch(r'[0-9a-f]{40}', meta['SOURCE_REVISION.txt'].strip()), 'SOURCE_REVISION.txt must be one commit hash'
     policy = meta['BUILD_POLICY.txt']
-    assert 'static=1' in policy and 'shared=0' in policy and 'openjpeg_shim=off' in policy, 'BUILD_POLICY.txt must say static-only, shim off'
+    assert 'static=1' in policy and 'shared=0' in policy and 'openjp2_module=off' in policy, 'BUILD_POLICY.txt must say static-only, openjp2 module off'
     opts = json.loads(meta['LICENSES/neoj2k-buildinfo.json'])['configure_options']
     for k, v in OPTIONS.items():
         assert k + '=' + v in opts, 'the build-info json must record %s=%s' % (k, v)
@@ -218,7 +218,7 @@ assert 'Anne Skydancer' in combined and 'Universite catholique de Louvain' in co
 subprocess.run([sys.executable, str(source / 'tools' / 'check_objects.py'), '--library', str(static)], check=True)
 
 
-# no exported opj_* symbols: the shim is off (file-local names such as MSVC's unwind-chain symbols of internal functions
+# no exported opj_* symbols: the openjp2 module is off (file-local names such as MSVC's unwind-chain symbols of internal functions
 # do not count). The listing must come from a symbol tool and must show the library's own nj2k_ API.
 def symbols():
     for tool in (['nm', '-A', '-g', '--defined-only'], ['llvm-nm', '-A', '-g', '--defined-only'], ['dumpbin', '/symbols']):
@@ -254,4 +254,4 @@ def smoke(tmp):
 
 with tempfile.TemporaryDirectory() as tmp:
     smoke(tmp)
-print('PASS: exact file list, clean source at ' + tag + ', licences, static-only without shim symbols, version, and a lossless round trip through the static library')
+print('PASS: exact file list, clean source at ' + tag + ', licences, static-only without opj_* symbols, version, and a lossless round trip through the static library')

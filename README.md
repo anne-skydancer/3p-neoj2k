@@ -2,10 +2,10 @@
 # 3p-neoj2k
 
 The autobuild package of [neo-j2k](https://github.com/anne-skydancer/neo-j2k) (BSD-2-Clause), the JPEG 2000 Part 1
-codec for an app using this library, built as a **static library only**, with the OpenJPEG-compatible shim off.
+codec for an app using this library, built as a **static library only**, with the openjp2 module off.
 The package has no shared library, no import library and no DLL or `.so`, and none of the OpenJPEG-name headers
-(`neoj2k_openjpeg.h`, `compat/openjpeg.h`, `compat/opj_config.h`): the caller uses the `nj2k_*` API only. The shared
-library and the OpenJPEG-compatible shim are distributed from the neo-j2k repository itself. The library is
+(`neoj2k_openjpeg.h`, `compat/openjpeg.h`, `compat/opj_config.h`): the caller uses the `nj2k_*` API only. The neo-j2k
+library with the openjp2 module on (OpenJPEG-compatible) is distributed from the neo-j2k repository itself. The library is
 `neoj2k_static.lib` (windows64) and `libneoj2k.a` (linux64, and linux64-lts, built on ubuntu:24.04 with glibc 2.39 or
 lower, checked in CI). It starts no thread (the host lends an executor), needs an AVX2 processor and is built with
 AVX2 and no OpenSim profile (CMake: `NJ2K_BUILD_STATIC=ON`, `NJ2K_BUILD_SHARED=OFF`, `NJ2K_MODULE_OPENJP2=OFF`).
@@ -26,7 +26,7 @@ The package is modelled on [3p-openjpeg](https://github.com/anne-skydancer/3p-op
 Contents, exactly (`verify_package.py` fails on anything else, in the stage and in each archive): `include/neoj2k/`
 (`neoj2k.h`, the C API, and `neoj2k.hpp`, the C++ wrapper), `lib/release/` (the static library), `LICENSES/` (neo-j2k's
 licence; OpenJPEG's, whose notices cover the code neo-j2k ports; the repository's notice file; a build-info file),
-`BUILD_POLICY.txt` (static=1, shared=0, OpenJPEG shim off), `SOURCE_REVISION.txt` (the neo-j2k commit, equal to the
+`BUILD_POLICY.txt` (static=1, shared=0, openjp2 module off), `SOURCE_REVISION.txt` (the neo-j2k commit, equal to the
 tag's commit) and `VERSION.txt`; the archive also holds the `autobuild-package.xml` that autobuild writes. Clean source: the build and CI fail if the neo-j2k submodule has local changes or is
 not exactly at its release tag, and the licence files are checked byte for byte against neo-j2k's at that tag.
 
@@ -40,6 +40,6 @@ Releasing: tag neo-j2k's `main` commit `v<version>`, pin the submodule to it, th
 `v0.1.3-1`). The release job runs only from `main`, refuses a tag whose version is not the one the packages were built as or that exists
 already, requires exactly the three archives, re-runs `verify_package.py --set` on them, and uploads only those archives and `SHA256SUMS`. The archives are
 named `neoj2k-<version>-<platform>-<run id>.tar.zst` (platforms windows64, linux64, linux64-lts); the package version
-(`VERSION.txt`) is neo-j2k's tag. The release
+(`VERSION.txt`) is neo-j2k's version. The release
 carries the three packages and `SHA256SUMS`, which the viewer's `autobuild.xml` entry needs (`license` BSD-2-Clause,
 `license_file` LICENSES/neoj2k.txt, which holds neo-j2k's and OpenJPEG's notices).

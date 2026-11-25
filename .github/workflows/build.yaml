@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026, Anne Skydancer (neo-j2k)
 #
-# Builds the neoj2k package (the static library, the two nj2k_* headers and licence texts; no shared library, OpenJPEG
-# shim off) for windows64, linux64 and linux64-lts, from the neo-j2k tag the submodule pins (a dirty or untagged source
+# Builds the neoj2k package (the static library, the two nj2k_* headers and licence texts; no shared library, openjp2
+# module off) for windows64, linux64 and linux64-lts, from the neo-j2k tag the submodule pins (a dirty or untagged source
 # fails the build). A dispatch with `publish` and a `tag` also cuts a
 # GitHub release from the three packages; nothing else publishes.
 name: Build
@@ -78,7 +78,7 @@ jobs:
           python .github/scripts/buildinfo.py --name neoj2k --flavour "${{ matrix.flavour }}" \
             --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
             --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
-            --build-type "Release, static library only (no shared library, OpenJPEG shim off), AVX2 floor, DLL C runtime" \
+            --build-type "Release, static library only (no shared library, openjp2 module off), AVX2 floor, DLL C runtime" \
             --glibc-json glibc.json \
             --option NJ2K_BUILD_STATIC=ON --option NJ2K_BUILD_SHARED=OFF --option NJ2K_MODULE_OPENJP2=OFF --option NJ2K_MSVC_STATIC_RUNTIME=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
       - name: Verify the package and the library through a round trip
@@ -139,7 +139,7 @@ jobs:
           python3 .github/scripts/buildinfo.py --name neoj2k --flavour "$FLAVOUR" \
             --upstream-version "$(cat stage/VERSION.txt)" --upstream-source https://github.com/anne-skydancer/neo-j2k.git \
             --upstream-hash "$(cat stage/SOURCE_REVISION.txt)" \
-            --build-type "Release, static library only (no shared library, OpenJPEG shim off), AVX2 floor, PIC, ubuntu:24.04" \
+            --build-type "Release, static library only (no shared library, openjp2 module off), AVX2 floor, PIC, ubuntu:24.04" \
             --glibc-json glibc.json \
             --option NJ2K_BUILD_STATIC=ON --option NJ2K_BUILD_SHARED=OFF --option NJ2K_MODULE_OPENJP2=OFF --option NJ2K_MSVC_STATIC_RUNTIME=OFF --option NJ2K_SIMD=AVX2 --option NJ2K_PROFILE_OPENSIM=OFF
       - name: Verify the package and the library through a round trip
@@ -199,5 +199,6 @@ jobs:
           # a tag that exists already may point elsewhere: --target would be ignored
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then echo "::error::the tag $TAG exists already"; exit 1; fi
           sha256sum *.tar.zst | tee SHA256SUMS
-          notes="neo-j2k ${version} static library package ${TAG} (build ${TAG##*-}): static library only (neoj2k_static.lib on Windows, libneoj2k.a on Linux), no shared library, OpenJPEG shim off, headers neoj2k.h and neoj2k.hpp only. Platforms: windows64, linux64, linux64-lts."
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --notes "$notes"             --title "neoj2k $TAG: static library only, OpenJPEG shim off" *.tar.zst SHA256SUMS
+          notes="neo-j2k ${version} static library package ${TAG} (build ${TAG##*-}): static library only (neoj2k_static.lib on Windows, libneoj2k.a on Linux), no shared library, openjp2 module off, headers neoj2k.h and neoj2k.hpp only. Platforms: windows64, linux64, linux64-lts."
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --notes "$notes" \
+            --title "neoj2k $TAG: static library only, openjp2 module off" *.tar.zst SHA256SUMS
