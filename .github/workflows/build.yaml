@@ -87,6 +87,8 @@ jobs:
         run: |
           version="$(cat stage/VERSION.txt)"
           autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-${{ matrix.flavour }}-${GITHUB_RUN_ID}" --results-file autobuild-results.json
+      - name: Set the archive's tar owners to root (no CI user name ships)
+        run: python .github/scripts/normalize_archive.py neoj2k-*.tar.zst
       - name: Verify the archive (exact files, tar owners, metadata, byte-identical to the verified stage)
         run: python verify_package.py --archive neoj2k-*.tar.zst stage
       - uses: actions/upload-artifact@v7
@@ -146,6 +148,8 @@ jobs:
         run: |
           version="$(cat stage/VERSION.txt)"
           autobuild package -A 64 --archive-format tzst --archive-name "neoj2k-${version}-linux64-lts-${GITHUB_RUN_ID}" --results-file autobuild-results.json
+      - name: Set the archive's tar owners to root (no CI user name ships)
+        run: /opt/ab/bin/python .github/scripts/normalize_archive.py neoj2k-*.tar.zst
       - name: Verify the archive (exact files, tar owners, metadata, byte-identical to the verified stage)
         run: /opt/ab/bin/python verify_package.py --archive neoj2k-*.tar.zst stage
       - uses: actions/upload-artifact@v7
