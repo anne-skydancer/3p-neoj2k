@@ -77,7 +77,7 @@ static = lib / ('neoj2k_static.lib' if windows else 'libneoj2k.a')
 files = {p.relative_to(stage).as_posix() for p in stage.rglob('*') if p.is_file()}
 dirs = {p.relative_to(stage).as_posix() for p in stage.rglob('*') if p.is_dir()}
 print('\n'.join(sorted(files)))
-check_listing(files, dirs, windows)
+check_listing(files, dirs, windows, extra=('autobuild-package.xml',))
 for pattern in ('*.dll', '*.so', '*.so.*', '*.dylib', '*.pdb', 'neoj2k.lib', '*.cmake', '*.pc'):
     found = [p.relative_to(stage).as_posix() for p in stage.rglob(pattern)]
     assert not found, 'shared, import, debug or config files must not be packaged: ' + ', '.join(found)
