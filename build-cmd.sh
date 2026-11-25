@@ -41,9 +41,9 @@ else
 fi
 
 stage="$(pwd)/stage"
-# nothing from an earlier run stays in the stage
-rm -rf "$stage"
+# nothing from an earlier run stays in the stage (autobuild-package.xml is autobuild's own, written before this script runs)
 mkdir -p "$stage"
+find "$stage" -mindepth 1 -maxdepth 1 ! -name autobuild-package.xml -exec rm -rf {} +
 
 # load autobuild provided shell functions and variables
 source_environment_tempfile="$stage/source_environment.sh"
