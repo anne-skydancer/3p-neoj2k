@@ -2,8 +2,7 @@
 # Copyright (c) 2026, Anne Skydancer (neo-j2k)
 #
 # Builds the neoj2k package (the static library, the two nj2k_* headers and licence texts; no shared library, openjp2
-# module off) for windows64, linux64 and linux64-lts, from the neo-j2k tag the submodule pins (a dirty or untagged source
-# fails the build). A dispatch with `publish` and a `tag` also cuts a
+# module off) for windows64, linux64 and linux64-lts, from the clean neo-j2k commit the submodule pins. A dispatch with `publish` and a `tag` also cuts a
 # GitHub release from the three packages; nothing else publishes.
 name: Build
 on:
@@ -50,8 +49,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      # The package version is neo-j2k's own tag on the pinned commit (build-cmd.sh); the shallow submodule checkout above
-      # has no tags, so fetch neo-j2k's release tags; the build fails if the submodule is not exactly at one.
+      # Fetch release tags for provenance tools. Validation builds can pin a clean commit before its release tag.
       - name: Fetch neo-j2k's release tags
         run: git -C neo-j2k fetch --no-recurse-submodules --depth=1 origin 'refs/tags/v*:refs/tags/v*'
       - uses: actions/checkout@v7
@@ -117,8 +115,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      # The package version is neo-j2k's own tag on the pinned commit (build-cmd.sh); the shallow submodule checkout above
-      # has no tags, so fetch neo-j2k's release tags; the build fails if the submodule is not exactly at one.
+      # Fetch release tags for provenance tools. Validation builds can pin a clean commit before its release tag.
       - name: Fetch neo-j2k's release tags
         run: git -C neo-j2k fetch --no-recurse-submodules --depth=1 origin 'refs/tags/v*:refs/tags/v*'
       - uses: actions/checkout@v7

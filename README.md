@@ -29,13 +29,11 @@ The package is modelled on [3p-openjpeg](https://github.com/anne-skydancer/3p-op
 Contents, exactly (`verify_package.py` fails on anything else, in the stage and in each archive): `include/neoj2k/`
 (`neoj2k.h`, the C API, and `neoj2k.hpp`, the C++ wrapper), `lib/release/` (the static library), `LICENSES/` (neo-j2k's
 licence; OpenJPEG's, whose notices cover the code neo-j2k ports; the repository's notice file; a build-info file),
-`BUILD_POLICY.txt` (static=1, shared=0, openjp2 module off), `SOURCE_REVISION.txt` (the neo-j2k commit, equal to the
-tag's commit) and `VERSION.txt`; the archive also holds the `autobuild-package.xml` that autobuild writes. Clean source: the build and CI fail if the neo-j2k submodule has local changes or is
-not exactly at its release tag, and the licence files are checked byte for byte against neo-j2k's at that tag.
+`BUILD_POLICY.txt` (static=1, shared=0, openjp2 module off), `SOURCE_REVISION.txt` (the exact pinned neo-j2k commit) and `VERSION.txt`; the archive also holds the `autobuild-package.xml` that autobuild writes. Clean source: the build and CI fail if the neo-j2k submodule has local changes, and verify the source revision, public-header version and licence files byte for byte against that commit.
 
 The source is the `neo-j2k` submodule, pinned to one commit; releases are cut with the submodule on a commit of
-neo-j2k's `main`. Local run: `NEOJ2K_SOURCE_DIR=<checkout> autobuild build -A 64 -c Release --no-configure` (with
-`AUTOBUILD_VARIABLES_FILE` set as in the workflow; the checkout must be clean and exactly on a release tag: there is no override),
+neo-j2k's `main`. Validation builds can pin a corrected commit before its release tag. Local run: `NEOJ2K_SOURCE_DIR=<checkout> autobuild build -A 64 -c Release --no-configure` (with
+`AUTOBUILD_VARIABLES_FILE` set as in the workflow and a clean source checkout),
 then `python verify_package.py stage <checkout>`.
 
 Releasing: tag neo-j2k's `main` commit `v<version>`, pin the submodule to it, then dispatch the Build workflow with

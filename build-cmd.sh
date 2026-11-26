@@ -53,20 +53,16 @@ source_environment_tempfile="$stage/source_environment.sh"
 . "$source_environment_tempfile"
 
 native() { if [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then cygpath -m "$1"; else echo "$1"; fi; }
-# The source must be clean and exactly on neo-j2k's release tag v<version>: no local changes, no untracked files, no
-# other commit. There is no override: a package is always the exact tag, and verify_package.py checks the same.
+# Build the clean pinned source commit. The public header supplies the library version,
+# and SOURCE_REVISION.txt identifies the exact source of release and validation packages.
 src="$(native "$SOURCE_DIR")"
 if [ -n "$(git -C "$src" status --porcelain --untracked-files=all)" ]; then
     echo "neoj2k: the neo-j2k source is dirty (local changes or untracked files); refusing to build" >&2
     exit 1
 fi
-if tag="$(git -C "$src" describe --exact-match --tags --match 'v[0-9]*' HEAD 2>/dev/null)"; then
-    NEOJ2K_VERSION="${tag#v}"
-    echo "${NEOJ2K_VERSION}" > "${stage}/VERSION.txt"
-else
-    echo "neoj2k: the neo-j2k source is not exactly at a release tag v<version>; refusing to build" >&2
-    exit 1
-fi
+version_of() { sed -n -E "s/^#define NJ2K_VERSION_$1 ([0-9]+)$/\\1/p" "$SOURCE_DIR/include/neoj2k/neoj2k.h" | tr -d '\r'; }
+NEOJ2K_VERSION="$(version_of MAJOR).$(version_of MINOR).$(version_of PATCH)"
+echo "${NEOJ2K_VERSION}" > "${stage}/VERSION.txt"
 
 build_dir="$(pwd)/build"
 rm -rf "$build_dir" "$stage/install"
