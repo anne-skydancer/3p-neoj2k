@@ -10,6 +10,9 @@ library with the openjp2 module on (OpenJPEG-compatible) is distributed from the
 lower, checked in CI). It starts no thread (the host lends an executor), needs an AVX2 processor and is built with
 AVX2 and no OpenSim profile (CMake: `NJ2K_BUILD_STATIC=ON`, `NJ2K_BUILD_SHARED=OFF`, `NJ2K_MODULE_OPENJP2=OFF`).
 
+New decoders accept partial texture downloads by default. The package smoke test checks this behavior
+and verifies that `nj2k_decoder_set_strict_mode(codec, NJ2K_TRUE)` still rejects the same prefix.
+
 Linking: define `NJ2K_STATIC` when compiling against the headers. It is built with the DLL C
 runtime (`/MD`, as the viewer is) on Windows, so a consumer using `/MT` must not link it. On Linux it is position-independent
 (`-fPIC`), so it also links into a shared object, and it needs only libc and libm. It carries no link-time-code-generation
