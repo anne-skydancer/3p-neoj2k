@@ -7,6 +7,9 @@ codec of the Vulkanstorm viewer, built as a **shared library**: `neoj2k.dll` wit
 CI). It exports `nj2k_*` only, never starts a thread (the host lends an executor), keeps link-time code generation
 inside the library, and needs an AVX2 processor.
 
+New decoders accept partial texture downloads by default. The package smoke test checks this behavior
+and verifies that `nj2k_decoder_set_strict_mode(codec, NJ2K_TRUE)` still rejects the same prefix.
+
 The package is modelled on [3p-openjpeg](https://github.com/anne-skydancer/3p-openjpeg): `build-cmd.sh`,
 `autobuild.xml`, `.github/workflows/build.yaml`, `verify_package.py`, a build-info file and a glibc report.
 

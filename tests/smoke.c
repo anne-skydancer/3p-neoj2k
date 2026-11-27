@@ -126,7 +126,25 @@ int main(void)
     CHECK(nj2k_decoder_set_executor(dec, NULL));
     nj2k_destroy_codec(dec);
 
+    /* A fresh decoder accepts a prefix by default. Strict callers can still reject it. */
+    const size_t cut = sink.size - 16;
+    for (int strict = 0; strict <= 1; ++strict) {
+        dec = nj2k_create_decompress(NJ2K_CODEC_J2K);
+        CHECK(dec);
+        CHECK(nj2k_setup_decoder(dec, &dp));
+        if (strict) CHECK(nj2k_decoder_set_strict_mode(dec, NJ2K_TRUE));
+        CHECK(nj2k_read_header_memory(dec, sink.data, cut, &described));
+        if (strict) {
+            CHECK(!nj2k_decode_memory(dec, sink.data, cut, &output));
+        } else {
+            CHECK(nj2k_decode_memory(dec, sink.data, cut, &output));
+            CHECK(nj2k_get_status(dec) == NJ2K_TRUNCATED);
+        }
+        nj2k_destroy_codec(dec);
+    }
+
     free(out); free(sink.data); free(pixels);
-    printf("smoke: PASS (%zu bytes encoded, %d x %d x %d lossless round trip exact)\n", sink.size, W, H, C);
+    printf("smoke: PASS (%zu bytes encoded, %d x %d x %d lossless round trip exact, partial download accepted by default)\n",
+           sink.size, W, H, C);
     return 0;
 }
