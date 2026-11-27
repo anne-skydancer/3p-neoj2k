@@ -171,13 +171,12 @@ def git(*args):
     return subprocess.run(['git', '-C', str(source)] + list(args), capture_output=True, text=True, check=True).stdout.strip()
 
 
-# clean source: no local changes of any kind (ignored files included), exactly at the release tag, and the package says so
+# Clean source and exact commit provenance, including validation builds before a release tag.
 assert not git('status', '--porcelain', '--untracked-files=all', '--ignored'), 'the neo-j2k source is dirty'
-tag = git('describe', '--exact-match', '--tags', '--match', 'v[0-9]*', 'HEAD')
 meta = check_metadata(stage)
 version = meta['VERSION.txt'].strip()
-assert version == tag[1:], 'VERSION.txt (%s) must equal the source tag (%s)' % (version, tag)
-assert meta['SOURCE_REVISION.txt'].strip() == git('rev-parse', tag + '^{commit}') == git('rev-parse', 'HEAD'), 'SOURCE_REVISION.txt must be the tag commit'
+revision = git('rev-parse', 'HEAD')
+assert meta['SOURCE_REVISION.txt'].strip() == revision, 'SOURCE_REVISION.txt must be the source commit'
 
 
 def src(n):
@@ -188,11 +187,11 @@ def pkg(n):
     return (stage / n).read_bytes()
 
 
-# the version the library reports comes from the header macros: the header (the source's and the staged one) must say the tag's version
+# The version the library reports comes from the source and staged public headers.
 for h in (source / 'include/neoj2k/neoj2k.h', stage / 'include/neoj2k/neoj2k.h'):
     text = h.read_text()
     v = '.'.join(re.search(r'^#define NJ2K_VERSION_%s (\d+)\s*$' % k, text, re.M).group(1) for k in ('MAJOR', 'MINOR', 'PATCH'))
-    assert v == version, '%s says %s, the tag says %s' % (h, v, version)
+    assert v == version, '%s says %s, VERSION.txt says %s' % (h, v, version)
 assert pkg('include/neoj2k/neoj2k.h') == src('include/neoj2k/neoj2k.h') and pkg('include/neoj2k/neoj2k.hpp') == src('include/neoj2k/neoj2k.hpp'), \
     'the staged headers must be the source headers byte for byte'
 
@@ -254,4 +253,4 @@ def smoke(tmp):
 
 with tempfile.TemporaryDirectory() as tmp:
     smoke(tmp)
-print('PASS: exact file list, clean source at ' + tag + ', licences, static-only without opj_* symbols, version, and a lossless round trip through the static library')
+print('PASS: exact file list, clean source at ' + revision + ', licences, static-only without opj_* symbols, version, and a lossless round trip through the static library')

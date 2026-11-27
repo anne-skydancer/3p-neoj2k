@@ -10,6 +10,9 @@ library with the openjp2 module on (OpenJPEG-compatible) is distributed from the
 lower, checked in CI). It starts no thread (the host lends an executor), needs an AVX2 processor and is built with
 AVX2 and no OpenSim profile (CMake: `NJ2K_BUILD_STATIC=ON`, `NJ2K_BUILD_SHARED=OFF`, `NJ2K_MODULE_OPENJP2=OFF`).
 
+New decoders accept partial texture downloads by default. The package smoke test checks this behavior
+and verifies that `nj2k_decoder_set_strict_mode(codec, NJ2K_TRUE)` still rejects the same prefix.
+
 Linking: define `NJ2K_STATIC` when compiling against the headers. It is built with the DLL C
 runtime (`/MD`, as the viewer is) on Windows, so a consumer using `/MT` must not link it. On Linux it is position-independent
 (`-fPIC`), so it also links into a shared object, and it needs only libc and libm. It carries no link-time-code-generation
@@ -26,13 +29,11 @@ The package is modelled on [3p-openjpeg](https://github.com/anne-skydancer/3p-op
 Contents, exactly (`verify_package.py` fails on anything else, in the stage and in each archive): `include/neoj2k/`
 (`neoj2k.h`, the C API, and `neoj2k.hpp`, the C++ wrapper), `lib/release/` (the static library), `LICENSES/` (neo-j2k's
 licence; OpenJPEG's, whose notices cover the code neo-j2k ports; the repository's notice file; a build-info file),
-`BUILD_POLICY.txt` (static=1, shared=0, openjp2 module off), `SOURCE_REVISION.txt` (the neo-j2k commit, equal to the
-tag's commit) and `VERSION.txt`; the archive also holds the `autobuild-package.xml` that autobuild writes. Clean source: the build and CI fail if the neo-j2k submodule has local changes or is
-not exactly at its release tag, and the licence files are checked byte for byte against neo-j2k's at that tag.
+`BUILD_POLICY.txt` (static=1, shared=0, openjp2 module off), `SOURCE_REVISION.txt` (the exact pinned neo-j2k commit) and `VERSION.txt`; the archive also holds the `autobuild-package.xml` that autobuild writes. Clean source: the build and CI fail if the neo-j2k submodule has local changes, and verify the source revision, public-header version and licence files byte for byte against that commit.
 
 The source is the `neo-j2k` submodule, pinned to one commit; releases are cut with the submodule on a commit of
-neo-j2k's `main`. Local run: `NEOJ2K_SOURCE_DIR=<checkout> autobuild build -A 64 -c Release --no-configure` (with
-`AUTOBUILD_VARIABLES_FILE` set as in the workflow; the checkout must be clean and exactly on a release tag: there is no override),
+neo-j2k's `main`. Validation builds can pin a corrected commit before its release tag. Local run: `NEOJ2K_SOURCE_DIR=<checkout> autobuild build -A 64 -c Release --no-configure` (with
+`AUTOBUILD_VARIABLES_FILE` set as in the workflow and a clean source checkout),
 then `python verify_package.py stage <checkout>`.
 
 Releasing: tag neo-j2k's `main` commit `v<version>`, pin the submodule to it, then dispatch the Build workflow with
