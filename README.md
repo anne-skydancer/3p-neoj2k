@@ -36,7 +36,11 @@ neo-j2k's `main`. Validation builds can pin a corrected commit before its releas
 `AUTOBUILD_VARIABLES_FILE` set as in the workflow and a clean source checkout),
 then `python verify_package.py stage <checkout>`.
 
-Releasing: tag neo-j2k's `main` commit `v<version>`, pin the submodule to it, then dispatch the Build workflow with
+Every successful `main` push publishes the three verified platform packages as
+`v<version>-<GitHub run ID>`. Publication waits for all three builds, verifies the package set,
+and includes `SHA256SUMS`. Pull requests build and verify the packages.
+
+For a manually numbered release, tag neo-j2k's `main` commit `v<version>`, pin the submodule to it, then dispatch the Build workflow with
 `publish` and the release tag `v<version>-<N>` (`N` the build number of this package for that neo-j2k version, e.g.
 `v0.1.3-1`). The release job runs only from `main`, refuses a tag whose version is not the one the packages were built as or that exists
 already, requires exactly the three archives, re-runs `verify_package.py --set` on them, and uploads only those archives and `SHA256SUMS`. The archives are

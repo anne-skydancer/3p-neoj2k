@@ -3,7 +3,7 @@
 #
 # Builds the neoj2k package (the static library, the two nj2k_* headers and licence texts; no shared library, openjp2
 # module off) for windows64, linux64 and linux64-lts, from the clean neo-j2k commit the submodule pins. A dispatch with `publish` and a `tag` also cuts a
-# GitHub release from the three packages; nothing else publishes.
+# GitHub release from the three packages. Successful main pushes publish a numbered release automatically.
 name: Build
 on:
   workflow_dispatch:
@@ -159,10 +159,13 @@ jobs:
   # A release carries the three packages and their sha256 sums, which the viewer's autobuild.xml entries need.
   release:
     needs: [build, build-lts]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish == true && inputs.tag != ''
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.tag != ''))
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: package-release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -181,6 +184,17 @@ jobs:
         run: |
           set -euo pipefail
           cd packages
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            if [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" != "$GITHUB_SHA" ]; then
+              echo "A newer main revision will publish its own packages"
+              exit 0
+            fi
+            # A CI run has one immutable source and one unique package release tag.
+            version=$(basename "$(find . -maxdepth 1 -name 'neoj2k-*-windows64-*.tar.zst' -print)")
+            version="${version#neoj2k-}"
+            version="${version%%-windows64-*}"
+            TAG="v${version}-${GITHUB_RUN_ID}"
+          fi
           # the tag is v<neo-j2k version>-<build number>; the version is the one the packages were built as (VERSION.txt, in each archive's name)
           [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-[1-9][0-9]*$ ]] || { echo "::error::the tag must be v<X.Y.Z>-<N>, e.g. v0.1.3-1"; exit 1; }
           version="${BASH_REMATCH[1]}"
@@ -194,7 +208,14 @@ jobs:
           [ "$(ls *.tar.zst | wc -l)" = 3 ] || { echo "::error::the release needs exactly three archives"; ls; exit 1; }
           python "$GITHUB_WORKSPACE/verify_package.py" --set .
           # a tag that exists already may point elsewhere: --target would be ignored
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then echo "::error::the tag $TAG exists already"; exit 1; fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            if [ "$GITHUB_EVENT_NAME" = push ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)" = "$GITHUB_SHA" ]; then
+              echo "This CI revision already published $TAG"
+              exit 0
+            fi
+            echo "::error::the tag $TAG exists already"
+            exit 1
+          fi
           sha256sum *.tar.zst | tee SHA256SUMS
           notes="neo-j2k ${version} static library package ${TAG} (build ${TAG##*-}): static library only (neoj2k_static.lib on Windows, libneoj2k.a on Linux), no shared library, openjp2 module off, headers neoj2k.h and neoj2k.hpp only. Platforms: windows64, linux64, linux64-lts."
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --notes "$notes" \
